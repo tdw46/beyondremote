@@ -84,6 +84,10 @@ pub fn stop_on_shutdown() {
     stop_child(managed.hbbr.take());
 }
 
+pub extern "C" fn stop_on_shutdown_hook() {
+    stop_on_shutdown();
+}
+
 pub fn handle_command(key: &str, value: &str) {
     match key {
         "managed-server-enable" => {
@@ -201,7 +205,7 @@ fn start() -> ResultType<()> {
     let work_dir = install_dir();
     fs::create_dir_all(&work_dir)?;
     SHUTDOWN_HOOK.call_once(|| {
-        shutdown_hooks::add_shutdown_hook(stop_on_shutdown);
+        shutdown_hooks::add_shutdown_hook(stop_on_shutdown_hook);
     });
     let mut managed = MANAGED.lock().unwrap();
     if managed
@@ -298,7 +302,7 @@ fn latest_asset() -> ResultType<Asset> {
             name: a.name,
             url: a.browser_download_url,
         })
-        .ok_or_else(|| anyhow!("No rustdesk-server release asset found for {wanted}"))
+        .ok_or_else(|| anyhow::anyhow!("No rustdesk-server release asset found for {wanted}"))
 }
 
 fn download_to(url: &str, path: &Path) -> ResultType<()> {
@@ -413,7 +417,7 @@ fn is_run_supported() -> bool {
 }
 
 fn is_install_supported() -> bool {
-    cfg!(any(target_os = "windows", target_os = "linux"))
+    asset_name_fragment().is_ok()
 }
 
 fn asset_name_fragment() -> ResultType<&'static str> {
