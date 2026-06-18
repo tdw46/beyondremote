@@ -80,6 +80,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     {
         // core_main's init_log does not work for flutter since it is only applied to its load_library in main.c
         hbb_common::init_log(false, "flutter_ffi");
+        crate::managed_server::start_if_enabled();
     }
 }
 
@@ -2836,6 +2837,11 @@ pub fn main_get_common(key: String) -> String {
         return ui_interface::is_permanent_password_set().to_string();
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
+    } else if key == "managed-server-status" {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        return crate::managed_server::status_json();
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        return "{}".to_owned();
     } else {
         if key.starts_with("download-data-") {
             let id = key.replace("download-data-", "");
@@ -2986,6 +2992,9 @@ pub fn main_set_common(_key: String, _value: String) {
         crate::hbbs_http::downloader::remove(&_value);
     } else if _key == "cancel-downloader" {
         crate::hbbs_http::downloader::cancel(&_value);
+    } else if _key.starts_with("managed-server-") {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        crate::managed_server::handle_command(&_key, &_value);
     }
 
     #[cfg(target_os = "linux")]

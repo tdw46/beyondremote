@@ -971,8 +971,6 @@ abstract class BaseAb {
 
 class LegacyAb extends BaseAb {
   bool get emtpy => peers.isEmpty && tags.isEmpty;
-  // licensedDevices is obtained from personal ab, shared ab restrict it in server
-  var licensedDevices = 0;
 
   LegacyAb();
 
@@ -996,7 +994,7 @@ class LegacyAb extends BaseAb {
 
   @override
   bool isFull() {
-    return licensedDevices > 0 && peers.length >= licensedDevices;
+    return false;
   }
 
   @override
@@ -1026,10 +1024,6 @@ class LegacyAb extends BaseAb {
         if (json.containsKey('error')) {
           throw json['error'];
         } else if (json.containsKey('data')) {
-          try {
-            licensedDevices = json['licensed_devices'];
-            // ignore: empty_catches
-          } catch (e) {}
           final data = jsonDecode(json['data']);
           if (data != null) {
             _deserialize(data);
@@ -1335,9 +1329,6 @@ class LegacyAb extends BaseAb {
       for (final peer in data['peers']) {
         peers.add(Peer.fromJson(peer));
       }
-    }
-    if (isFull()) {
-      peers.removeRange(licensedDevices, peers.length);
     }
     // restore online
     peers

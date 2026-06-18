@@ -501,7 +501,7 @@ impl Client {
                                     bail!("Key mismatch");
                                 }
                                 Ok(punch_hole_response::Failure::LICENSE_OVERUSE) => {
-                                    bail!("Key overuse");
+                                    bail!("Server rejected key");
                                 }
                                 _ => bail!("other punch hole failure"),
                             }
@@ -3769,7 +3769,7 @@ pub trait Interface: Send + Clone + 'static + Sized {
             && ((cfg!(windows) && (errno == 10054 || err.contains("10054")))
                 || (!cfg!(windows) && (errno == 104 || err.contains("104")))
                 || (!err.contains("Failed") && err.contains("deadline")))
-        // deadline: https://github.com/rustdesk/rustdesk-server-pro/discussions/325, most likely comes from secure tcp timeout
+        // A deadline here most likely comes from secure tcp timeout.
         {
             relay_hint = true;
             if !received {

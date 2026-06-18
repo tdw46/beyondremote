@@ -74,10 +74,14 @@ void showServerSettingsWithValue(
   final relayCtrl = TextEditingController(text: serverConfig.relayServer);
   final apiCtrl = TextEditingController(text: serverConfig.apiServer);
   final keyCtrl = TextEditingController(text: serverConfig.key);
+  final managedHbbsCtrl = TextEditingController();
+  final managedHbbrCtrl = TextEditingController();
 
   RxString idServerMsg = ''.obs;
   RxString relayServerMsg = ''.obs;
   RxString apiServerMsg = ''.obs;
+  Map<String, dynamic> managedStatus = {};
+  var managedStatusRequested = false;
 
   final controllers = [idCtrl, relayCtrl, apiCtrl, keyCtrl];
   final errMsgs = [
@@ -87,6 +91,167 @@ void showServerSettingsWithValue(
   ];
 
   dialogManager.show((setState, close, context) {
+    Future<void> refreshManagedStatus() async {
+      try {
+        final status = jsonDecode(
+            await bind.mainGetCommon(key: 'managed-server-status'));
+        if (status is Map<String, dynamic>) {
+          setState(() {
+            managedStatus = status;
+            if (managedHbbsCtrl.text.isEmpty) {
+              managedHbbsCtrl.text = status['hbbs_path']?.toString() ?? '';
+            }
+            if (managedHbbrCtrl.text.isEmpty) {
+              managedHbbrCtrl.text = status['hbbr_path']?.toString() ?? '';
+            }
+            if (status['running'] == true) {
+              idCtrl.text = status['id_server']?.toString() ?? idCtrl.text;
+              relayCtrl.text =
+                  status['relay_server']?.toString() ?? relayCtrl.text;
+              apiCtrl.text = status['api_server']?.toString() ?? apiCtrl.text;
+              final key = status['key']?.toString() ?? '';
+              if (key.isNotEmpty) {
+                keyCtrl.text = key;
+              }
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('Failed to load managed server status: $e');
+      }
+    }
+
+    Future<void> refreshManagedStatusFor(Duration duration) async {
+      final end = DateTime.now().add(duration);
+      do {
+        await refreshManagedStatus();
+        if (managedStatus['installing'] != true) {
+          break;
+        }
+        await Future.delayed(Duration(seconds: 1));
+      } while (DateTime.now().isBefore(end));
+      await refreshManagedStatus();
+    }
+
+    Widget managedServerPanel() {
+      if (isIOS || isAndroid || isWeb) {
+        return Offstage();
+      }
+      if (!managedStatusRequested) {
+        managedStatusRequested = true;
+        Future.microtask(refreshManagedStatus);
+      }
+      final supportedInstall = managedStatus['supported_install'] == true;
+      final installed = managedStatus['installed'] == true;
+      final running = managedStatus['running'] == true;
+      final installing = managedStatus['installing'] == true;
+      final enabled = managedStatus['enabled'] == true;
+      final message = managedStatus['message']?.toString() ??
+          'Manage a local open-source hbbs/hbbr server for this client.';
+
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: Theme.of(context).dividerColor),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Managed self-hosted server',
+                style: Theme.of(context).textTheme.titleSmall),
+            SizedBox(height: 6),
+            Text(message, style: Theme.of(context).textTheme.bodySmall),
+            if (!supportedInstall) ...[
+              SizedBox(height: 10),
+              serverSettingsTextFormField(
+                label: 'hbbs path',
+                controller: managedHbbsCtrl,
+                errorMsg: '',
+                helperText: 'Path to a local hbbs binary.',
+              ),
+              SizedBox(height: 8),
+              serverSettingsTextFormField(
+                label: 'hbbr path',
+                controller: managedHbbrCtrl,
+                errorMsg: '',
+                helperText: 'Path to a local hbbr binary.',
+              ),
+            ],
+            SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: CheckboxListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('Start with Beyond Remote'),
+                    value: enabled,
+                    onChanged: installing
+                        ? null
+                        : (value) async {
+                            await bind.mainSetCommon(
+                                key: 'managed-server-enable',
+                                value: value == true ? 'Y' : '');
+                            await refreshManagedStatusFor(
+                                Duration(seconds: 3));
+                          },
+                  ),
+                ),
+                if (supportedInstall && !installed)
+                  dialogButton(
+                    installing ? 'Installing...' : 'Install',
+                    onPressed: installing
+                        ? null
+                        : () async {
+                            await bind.mainSetCommon(
+                                key: 'managed-server-install', value: '');
+                            await refreshManagedStatusFor(
+                                Duration(seconds: 90));
+                          },
+                  )
+                else if (running)
+                  dialogButton(
+                    'Stop',
+                    onPressed: installing
+                        ? null
+                        : () async {
+                            await bind.mainSetCommon(
+                                key: 'managed-server-stop', value: '');
+                            await refreshManagedStatus();
+                          },
+                    isOutline: true,
+                  )
+                else
+                  dialogButton(
+                    'Start',
+                    onPressed: installing
+                        ? null
+                        : () async {
+                            if (!supportedInstall) {
+                              await bind.mainSetCommon(
+                                  key: 'managed-server-set-paths',
+                                  value: jsonEncode({
+                                    'hbbs': managedHbbsCtrl.text.trim(),
+                                    'hbbr': managedHbbrCtrl.text.trim(),
+                                  }));
+                            }
+                            await bind.mainSetCommon(
+                                key: 'managed-server-start', value: '');
+                            await refreshManagedStatusFor(
+                                Duration(seconds: 8));
+                          },
+                  ),
+              ],
+            ),
+            if (installing)
+              LinearProgressIndicator().marginOnly(top: 8),
+          ],
+        ),
+      );
+    }
+
     Future<bool> submit() async {
       setState(() {
         isInProgress = true;
@@ -106,8 +271,14 @@ void showServerSettingsWithValue(
     }
 
     Widget buildField(
-        String label, TextEditingController controller, String errorMsg,
-        {String? Function(String?)? validator, bool autofocus = false}) {
+      String label,
+      TextEditingController controller,
+      String errorMsg, {
+      String? Function(String?)? validator,
+      bool autofocus = false,
+      String? hintText,
+      String? helperText,
+    }) {
       if (isDesktop || isWeb) {
         return Row(
           children: [
@@ -126,6 +297,8 @@ void showServerSettingsWithValue(
                 showLabelText: false,
                 validator: validator,
                 autofocus: autofocus,
+                hintText: hintText,
+                helperText: helperText,
               ).workaroundFreezeLinuxMint(),
             ),
           ],
@@ -137,6 +310,8 @@ void showServerSettingsWithValue(
         controller: controller,
         errorMsg: errorMsg,
         validator: validator,
+        hintText: hintText,
+        helperText: helperText,
       ).workaroundFreezeLinuxMint();
     }
 
@@ -153,18 +328,39 @@ void showServerSettingsWithValue(
           child: Obx(() => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  buildField(translate('ID Server'), idCtrl, idServerMsg.value,
-                      autofocus: true),
+                  Text(
+                    'Enter your self-hosted rustdesk-server values. Relay, API, and key can stay empty when your deployment does not use them.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  SizedBox(height: 12),
+                  managedServerPanel(),
+                  SizedBox(height: 12),
+                  buildField(
+                    translate('ID Server'),
+                    idCtrl,
+                    idServerMsg.value,
+                    autofocus: true,
+                    hintText: 'hbbs.example.com',
+                    helperText: 'Host and optional port for hbbs.',
+                  ),
                   SizedBox(height: 8),
                   if (!isIOS && !isWeb) ...[
-                    buildField(translate('Relay Server'), relayCtrl,
-                        relayServerMsg.value),
+                    buildField(
+                      translate('Relay Server'),
+                      relayCtrl,
+                      relayServerMsg.value,
+                      hintText: 'hbbr.example.com',
+                      helperText: 'Host and optional port for hbbr.',
+                    ),
                     SizedBox(height: 8),
                   ],
                   buildField(
                     translate('API Server'),
                     apiCtrl,
                     apiServerMsg.value,
+                    hintText: 'https://hbbs.example.com',
+                    helperText:
+                        'Optional web/API endpoint for accounts and address books.',
                     validator: (v) {
                       if (v != null && v.isNotEmpty) {
                         if (!(v.startsWith('http://') ||
@@ -176,7 +372,13 @@ void showServerSettingsWithValue(
                     },
                   ),
                   SizedBox(height: 8),
-                  buildField('Key', keyCtrl, ''),
+                  buildField(
+                    'Key',
+                    keyCtrl,
+                    '',
+                    helperText:
+                        'Optional server public key from your deployment.',
+                  ),
                   if (isInProgress)
                     Padding(
                       padding: EdgeInsets.only(top: 8),
@@ -215,6 +417,8 @@ TextFormField serverSettingsTextFormField({
   bool autofocus = false,
   bool showLabelText = true,
   EdgeInsetsGeometry? contentPadding,
+  String? hintText,
+  String? helperText,
 }) {
   return TextFormField(
     controller: controller,
@@ -222,6 +426,8 @@ TextFormField serverSettingsTextFormField({
       labelText: showLabelText ? label : null,
       errorText: errorMsg.isEmpty ? null : errorMsg,
       contentPadding: contentPadding,
+      hintText: hintText,
+      helperText: helperText,
     ),
     validator: validator,
     autofocus: autofocus,

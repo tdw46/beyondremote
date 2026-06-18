@@ -128,10 +128,17 @@ pub fn global_init() -> bool {
             crate::server::wayland::init();
         }
     }
+    #[cfg(not(any(target_os = "android", target_os = "ios", feature = "cli")))]
+    if is_main() {
+        crate::managed_server::start_if_enabled();
+    }
     true
 }
 
-pub fn global_clean() {}
+pub fn global_clean() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::managed_server::stop_on_shutdown();
+}
 
 #[inline]
 pub fn set_server_running(b: bool) {

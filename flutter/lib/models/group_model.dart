@@ -186,7 +186,7 @@ class GroupModel {
               json['error']
                   .toString()
                   .contains('ambiguous column name: status')) {
-            throw translate('upgrade_rustdesk_server_pro_to_{1.1.10}_tip');
+            throw 'The configured server does not expose this user/group endpoint.';
           } else {
             throw json['error'];
           }

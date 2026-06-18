@@ -3839,7 +3839,7 @@ Widget _buildPresetPasswordWarning() {
           style: TextStyle(
             color: Colors.red,
             fontSize:
-                18, // https://github.com/rustdesk/rustdesk-server-pro/issues/261
+                18,
             fontWeight: FontWeight.bold,
           ),
         )).paddingOnly(bottom: 8),
@@ -4184,7 +4184,6 @@ String getConnectionText(bool secure, bool direct, String streamType) {
 
 String decode_http_response(http.Response resp) {
   try {
-    // https://github.com/rustdesk/rustdesk-server-pro/discussions/758
     return utf8.decode(resp.bodyBytes, allowMalformed: true);
   } catch (e) {
     debugPrint('Failed to decode response as UTF-8: $e');

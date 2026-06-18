@@ -21,7 +21,7 @@ const TIME_CONN: Duration = Duration::from_secs(3);
 #[cfg(not(any(target_os = "ios")))]
 lazy_static::lazy_static! {
     static ref SENDER : Mutex<broadcast::Sender<Vec<i32>>> = Mutex::new(start_hbbs_sync());
-    static ref PRO: Arc<Mutex<bool>> = Default::default();
+    static ref SERVER_API_AVAILABLE: Arc<Mutex<bool>> = Default::default();
 }
 
 #[cfg(not(any(target_os = "ios")))]
@@ -97,7 +97,7 @@ async fn start_hbbs_sync_async() {
                 let url = heartbeat_url();
                 let id = Config::get_id();
                 if url.is_empty() {
-                    *PRO.lock().unwrap() = false;
+                    *SERVER_API_AVAILABLE.lock().unwrap() = false;
                     continue;
                 }
                 if config::option2bool("stop-service", &Config::get_option("stop-service")) {
@@ -106,7 +106,7 @@ async fn start_hbbs_sync_async() {
                 let conns = Connection::alive_conns();
                 if info_uploaded.uploaded && (url != info_uploaded.url || id != info_uploaded.id) {
                     info_uploaded.uploaded = false;
-                    *PRO.lock().unwrap() = false;
+                    *SERVER_API_AVAILABLE.lock().unwrap() = false;
                 }
                 // For Windows:
                 // We can't skip uploading sysinfo when the username is empty, because the username may
@@ -192,12 +192,11 @@ async fn start_hbbs_sync_async() {
                             let samever = match crate::post_request(url.replace("heartbeat", "sysinfo_ver"), "".to_owned(), "").await {
                                 Ok(x)  => {
                                     sysinfo_ver = x.clone();
-                                    *PRO.lock().unwrap() = true;
+                                    *SERVER_API_AVAILABLE.lock().unwrap() = true;
                                     x == ver
                                 }
                                 _ => {
-                                    false // to make sure Pro can be assigned in below post for old
-                                            // hbbs pro not supporting sysinfo_ver, use false for ensuring
+                                    false // Keep the sysinfo upload path for servers that do not expose sysinfo_ver.
                                 }
                             };
                             if samever {
@@ -216,7 +215,7 @@ async fn start_hbbs_sync_async() {
                                     config::Status::set("sysinfo_hash", hash);
                                     config::Status::set("sysinfo_ver", sysinfo_ver.clone());
                                 }
-                                *PRO.lock().unwrap() = true;
+                                *SERVER_API_AVAILABLE.lock().unwrap() = true;
                             } else if x == "ID_NOT_FOUND" {
                                 info_uploaded.last_uploaded = None; // next heartbeat will upload sysinfo again
                             } else {
@@ -305,6 +304,6 @@ fn handle_config_options(config_options: HashMap<String, String>) {
 
 #[allow(unused)]
 #[cfg(not(any(target_os = "ios")))]
-pub fn is_pro() -> bool {
-    PRO.lock().unwrap().clone()
+pub fn has_server_api() -> bool {
+    *SERVER_API_AVAILABLE.lock().unwrap()
 }

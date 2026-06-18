@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="res/logo-header.svg" alt="RustDesk - Your remote desktop"><br>
+  <img src="res/logo-header.svg" alt="Beyond Remote - self-hosted remote desktop"><br>
   <a href="#raw-steps-to-build">Build</a> •
   <a href="#how-to-build-with-docker">Docker</a> •
   <a href="#file-structure">Structure</a> •
@@ -15,9 +15,21 @@
 
 Chat with us: [Discord](https://discord.gg/nDceKgxnkV) | [Twitter](https://twitter.com/rustdesk) | [Reddit](https://www.reddit.com/r/rustdesk) | [YouTube](https://www.youtube.com/@rustdesk)
 
-[![RustDesk Server Pro](https://img.shields.io/badge/RustDesk%20Server%20Pro-Advanced%20Features-blue)](https://rustdesk.com/pricing.html)
+Beyond Remote is a self-hosted-first fork of RustDesk. It keeps the open remote desktop client flow, removes commercial upsell messaging from the fork, and keeps self-hosted ID/relay/API server configuration available in the app.
 
-Yet another remote desktop solution, written in Rust. Works out of the box with no configuration required. You have full control of your data, with no concerns about security. You can use our rendezvous/relay server, [set up your own](https://rustdesk.com/server), or [write your own rendezvous/relay server](https://github.com/rustdesk/rustdesk-server-demo).
+You can use the public rendezvous/relay service for quick testing, set up your own open-source server, or write your own rendezvous/relay server.
+
+## Self-hosting
+
+Beyond Remote works with the open-source `rustdesk-server` components:
+
+- `hbbs`: ID/rendezvous server
+- `hbbr`: relay server
+- optional API/web endpoint when your deployment provides account or address-book APIs
+
+In the app, open `Settings -> Network -> Self-hosted ID/Relay server`. On Windows and Linux, use `Install` in the managed self-hosted server panel to download and start the open-source hbbs/hbbr server automatically. On macOS, choose local hbbs/hbbr binaries and Beyond Remote will manage their start/stop lifecycle.
+
+Features that require server APIs use the capabilities exposed by the server you run.
 
 ![image](https://user-images.githubusercontent.com/71636191/171661982-430285f0-2e12-4b1d-9957-4a58e375304d.png)
 

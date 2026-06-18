@@ -2349,11 +2349,11 @@ impl Connection {
                 .await
                 {
                     log::warn!("ipc to connection manager exit: {}", err);
-                    // https://github.com/rustdesk/rustdesk-server-pro/discussions/382#discussioncomment-10525725, cm may start failed
+                    // Connection manager startup can fail during some Windows session states.
                     #[cfg(windows)]
                     if !crate::platform::is_prelogin()
                         && !err.to_string().contains(crate::platform::EXPLORER_EXE)
-                        && !crate::hbbs_http::sync::is_pro()
+                        && !crate::hbbs_http::sync::has_server_api()
                     {
                         allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
                     }
@@ -2507,7 +2507,6 @@ impl Connection {
                 return true;
             }
 
-            // https://github.com/rustdesk/rustdesk-server-pro/discussions/646
             // `is_logon` is used to check login with `OPTION_ALLOW_LOGON_SCREEN_PASSWORD` == "Y".
             // `is_logon_ui()` is a fallback for logon UI detection on Windows.
             #[cfg(target_os = "windows")]
@@ -4495,7 +4494,7 @@ impl Connection {
         let msg_out = if !privacy_mode::is_privacy_mode_supported() {
             crate::common::make_privacy_mode_msg_with_details(
                 back_notification::PrivacyModeState::PrvNotSupported,
-                "Unsupported. 1 Multi-screen is not supported. 2 Please confirm the license is activated.".to_string(),
+                "Unsupported. Multi-screen or privacy mode support is not available on this peer.".to_string(),
                 impl_key,
             )
         } else {
@@ -4576,7 +4575,7 @@ impl Connection {
             crate::common::make_privacy_mode_msg_with_details(
                 back_notification::PrivacyModeState::PrvNotSupported,
                 // This error message is used for magnifier. It is ok to use it here.
-                "Unsupported. 1 Multi-screen is not supported. 2 Please confirm the license is activated.".to_string(),
+                "Unsupported. Multi-screen or privacy mode support is not available on this peer.".to_string(),
                 impl_key,
             )
         } else {
