@@ -357,7 +357,7 @@ void showServerSettingsWithValue(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Enter your self-hosted server values. Relay, API, and key can stay empty when your deployment does not use them.',
+                    'Enter your self-hosted server values. Relay and key can stay empty when your deployment does not use them. API is required for login, address books, and synced server settings.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   SizedBox(height: 12),
@@ -388,7 +388,7 @@ void showServerSettingsWithValue(
                     apiServerMsg.value,
                     hintText: 'https://hbbs.example.com',
                     helperText:
-                        'Optional web/API endpoint for accounts and address books.',
+                        'Web/API endpoint for accounts, address books, and synced server settings.',
                     validator: (v) {
                       if (v != null && v.isNotEmpty) {
                         if (!(v.startsWith('http://') ||

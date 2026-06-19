@@ -9,6 +9,7 @@ import shutil
 import hashlib
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 windows = platform.platform().startswith('Windows')
@@ -44,6 +45,23 @@ def system2(cmd):
     if exit_code != 0:
         sys.stderr.write(f"Error occurred when executing: `{cmd}`. Exiting.\n")
         sys.exit(-1)
+
+
+def ad_hoc_sign_macos_app(app_path):
+    # Flutter/Xcode signs before we copy the helper service into the bundle.
+    # Refresh the ad-hoc seal so local unsigned builds are internally valid.
+    frameworks_path = pathlib.Path(app_path) / 'Contents' / 'Frameworks'
+    for item in frameworks_path.iterdir():
+        if item.suffix in ('.framework', '.dylib'):
+            system2(f'codesign --force --options runtime --sign - "{item}"')
+    service_path = pathlib.Path(app_path) / 'Contents' / 'MacOS' / 'service'
+    system2(f'codesign --force --options runtime --sign - "{service_path}"')
+    entitlements = 'macos/Runner/Release.entitlements'
+    with tempfile.NamedTemporaryFile(suffix='.entitlements') as local_entitlements:
+        shutil.copy2(entitlements, local_entitlements.name)
+        system2(f'/usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "{local_entitlements.name}" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :com.apple.security.cs.disable-library-validation true" "{local_entitlements.name}"')
+        system2(f'codesign --force --deep --options runtime --entitlements "{local_entitlements.name}" --sign - "{app_path}"')
+    system2(f'codesign --verify --deep --strict --verbose=2 "{app_path}"')
 
 
 def get_version():
@@ -417,11 +435,13 @@ def build_flutter_dmg(version, features):
     mac_arch = 'arm64' if platform.machine().lower() in ('arm64', 'aarch64') else 'x86_64'
     system2(
         f'FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
-    system2('cp -rf ../target/release/service ./build/macos/Build/Products/Release/RustDesk.app/Contents/MacOS/')
+    app_path = './build/macos/Build/Products/Release/BeyondRemote.app'
+    system2(f'cp -rf ../target/release/service {app_path}/Contents/MacOS/')
+    ad_hoc_sign_macos_app(app_path)
     '''
     system2(
-        "create-dmg --volname \"RustDesk Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon RustDesk.app 200 190 --hide-extension RustDesk.app rustdesk.dmg ./build/macos/Build/Products/Release/RustDesk.app")
-    os.rename("rustdesk.dmg", f"../rustdesk-{version}.dmg")
+        "create-dmg --volname \"BeyondRemote Installer\" --window-pos 200 120 --window-size 800 400 --icon-size 100 --app-drop-link 600 185 --icon BeyondRemote.app 200 190 --hide-extension BeyondRemote.app beyondremote.dmg ./build/macos/Build/Products/Release/BeyondRemote.app")
+    os.rename("beyondremote.dmg", f"../beyondremote-{version}.dmg")
     '''
     os.chdir("..")
 
@@ -566,10 +586,20 @@ def main():
         else:
             system2('cargo --locked bundle --release --features ' + features)
             if osx:
+                app_bundle = ''
+                for candidate in (
+                        'target/release/bundle/osx/Beyond Remote.app',
+                        'target/release/bundle/osx/BeyondRemote.app',
+                        'target/release/bundle/osx/RustDesk.app'):
+                    if os.path.isdir(candidate):
+                        app_bundle = candidate
+                        break
+                if not app_bundle:
+                    raise FileNotFoundError('macOS app bundle was not generated')
                 system2(
-                    'strip target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk')
+                    f'strip "{app_bundle}/Contents/MacOS/rustdesk"')
                 system2(
-                    'cp libsciter.dylib target/release/bundle/osx/RustDesk.app/Contents/MacOS/')
+                    f'cp libsciter.dylib "{app_bundle}/Contents/MacOS/"')
                 # https://github.com/sindresorhus/create-dmg
                 system2('/bin/rm -rf *.dmg')
                 pa = os.environ.get('P')
@@ -577,30 +607,30 @@ def main():
                     system2('''
     # buggy: rcodesign sign ... path/*, have to sign one by one
     # install rcodesign via cargo install apple-codesign
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/rustdesk
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/libsciter.dylib
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./target/release/bundle/osx/RustDesk.app
+    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime "{1}/Contents/MacOS/rustdesk"
+    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime "{1}/Contents/MacOS/libsciter.dylib"
+    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime "{1}"
     # goto "Keychain Access" -> "My Certificates" for below id which starts with "Developer ID Application:"
-    codesign -s "Developer ID Application: {0}" --force --options runtime  ./target/release/bundle/osx/RustDesk.app/Contents/MacOS/*
-    codesign -s "Developer ID Application: {0}" --force --options runtime  ./target/release/bundle/osx/RustDesk.app
-    '''.format(pa))
+    codesign -s "Developer ID Application: {0}" --force --options runtime "{1}/Contents/MacOS/"*
+    codesign -s "Developer ID Application: {0}" --force --options runtime "{1}"
+    '''.format(pa, app_bundle))
                 system2(
-                    'create-dmg "RustDesk %s.dmg" "target/release/bundle/osx/RustDesk.app"' % version)
-                os.rename('RustDesk %s.dmg' %
-                          version, 'rustdesk-%s.dmg' % version)
+                    f'create-dmg --volname "BeyondRemote Installer" "BeyondRemote {version}.dmg" "{app_bundle}"')
+                os.rename(f'BeyondRemote {version}.dmg',
+                          f'beyondremote-{version}.dmg')
                 if pa:
                     system2('''
     # https://pyoxidizer.readthedocs.io/en/apple-codesign-0.14.0/apple_codesign.html
     # https://pyoxidizer.readthedocs.io/en/stable/tugger_code_signing.html
     # https://developer.apple.com/developer-id/
     # goto xcode and login with apple id, manager certificates (Developer ID Application and/or Developer ID Installer) online there (only download and double click (install) cer file can not export p12 because no private key)
-    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./rustdesk-{1}.dmg
-    codesign -s "Developer ID Application: {0}" --force --options runtime ./rustdesk-{1}.dmg
+    #rcodesign sign --p12-file ~/.p12/rustdesk-developer-id.p12 --p12-password-file ~/.p12/.cert-pass --code-signature-flags runtime ./beyondremote-{1}.dmg
+    codesign -s "Developer ID Application: {0}" --force --options runtime ./beyondremote-{1}.dmg
     # https://appstoreconnect.apple.com/access/api
     # https://gregoryszorc.com/docs/apple-codesign/stable/apple_codesign_getting_started.html#apple-codesign-app-store-connect-api-key
     # p8 file is generated when you generate api key (can download only once)
-    rcodesign notary-submit --api-key-path ../.p12/api-key.json  --staple rustdesk-{1}.dmg
-    # verify:  spctl -a -t exec -v /Applications/RustDesk.app
+    rcodesign notary-submit --api-key-path ../.p12/api-key.json  --staple beyondremote-{1}.dmg
+    # verify:  spctl -a -t exec -v "/Applications/Beyond Remote.app"
     '''.format(pa, version))
                 else:
                     print('Not signed')

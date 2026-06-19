@@ -177,8 +177,7 @@ class UserModel {
   /// throw [RequestException]
   Future<LoginResponse> login(LoginRequest loginRequest) async {
     final url = await bind.mainGetApiServer();
-    final resp = await http.post(Uri.parse('$url/api/login'),
-        body: jsonEncode(loginRequest.toJson()));
+    final resp = await _postLogin(url, loginRequest);
 
     final Map<String, dynamic> body;
     try {
@@ -189,7 +188,8 @@ class UserModel {
         BotToast.showText(
             contentColor: Colors.red, text: 'HTTP ${resp.statusCode}');
       }
-      rethrow;
+      throw RequestException(resp.statusCode,
+          'Account API returned an unreadable response from $url. Check that the Self-hosted API server points to the BeyondRemote account API, not hbbs or hbbr.');
     }
     if (resp.statusCode != 200) {
       throw RequestException(resp.statusCode, body['error'] ?? '');
@@ -199,6 +199,25 @@ class UserModel {
     }
 
     return getLoginResponseFromAuthBody(body);
+  }
+
+  Future<http.Response> _postLogin(
+      String url, LoginRequest loginRequest) async {
+    try {
+      return await http.post(Uri.parse('$url/api/login'),
+          body: jsonEncode(loginRequest.toJson()));
+    } catch (e) {
+      final lower = e.toString().toLowerCase();
+      if (lower.contains('timedout') ||
+          lower.contains('timed out') ||
+          lower.contains('connection refused') ||
+          lower.contains('failed host lookup') ||
+          lower.contains('the http request failed')) {
+        throw RequestException(0,
+            'Cannot reach the account API at $url. Login, address books, and synced server settings require a self-hosted API service, usually on port 21114. hbbs/hbbr alone still support remote connections by ID and password.');
+      }
+      rethrow;
+    }
   }
 
   LoginResponse getLoginResponseFromAuthBody(Map<String, dynamic> body) {
