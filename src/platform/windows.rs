@@ -1459,6 +1459,21 @@ pub fn copy_exe_cmd(src_exe: &str, exe: &str, path: &str) -> ResultType<String> 
     ))
 }
 
+fn cleanup_legacy_user_shortcuts_cmd(app_name: &str) -> String {
+    let legacy_app_name = "Beyond Remote";
+    format!(
+        "
+        if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}.lnk\" del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}.lnk\"
+        if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\\{app_name}.lnk\" del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\\{app_name}.lnk\"
+        if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\" rd \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\"
+        if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{legacy_app_name}\\{legacy_app_name}.lnk\" del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{legacy_app_name}\\{legacy_app_name}.lnk\"
+        if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{legacy_app_name}\" rd \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{legacy_app_name}\"
+        if exist \"%USERPROFILE%\\Desktop\\{app_name}.lnk\" del /f /q \"%USERPROFILE%\\Desktop\\{app_name}.lnk\"
+        if exist \"%USERPROFILE%\\Desktop\\{legacy_app_name}.lnk\" del /f /q \"%USERPROFILE%\\Desktop\\{legacy_app_name}.lnk\"
+        "
+    )
+}
+
 #[inline]
 pub fn rename_exe_cmd(src_exe: &str, path: &str) -> ResultType<String> {
     let src_exe_filename = PathBuf::from(src_exe)
@@ -1705,6 +1720,7 @@ copy /Y \"{tmp_path}\\{app_name} Tray.lnk\" \"%PROGRAMDATA%\\Microsoft\\Windows\
 chcp 65001
 md \"{path}\"
 {copy_exe}
+{rename_exe}
 reg add {subkey} /f
 reg add {subkey} /f /v DisplayIcon /t REG_SZ /d \"{display_icon}\"
 reg add {subkey} /f /v DisplayName /t REG_SZ /d \"{app_name}\"
@@ -1724,6 +1740,7 @@ cscript \"{uninstall_shortcut}\"
 {tray_shortcuts}
 {shortcuts}
 copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
+{cleanup_legacy_user_shortcuts}
 {dels}
 {import_config}
 {after_install}
@@ -1742,6 +1759,8 @@ copy /Y \"{tmp_path}\\Uninstall {app_name}.lnk\" \"{path}\\\"
         sleep = if debug { "timeout 300" } else { "" },
         dels = if debug { "" } else { &dels },
         copy_exe = copy_exe_cmd(&src_exe, &exe, &path)?,
+        rename_exe = rename_exe_cmd(&src_exe, &path)?,
+        cleanup_legacy_user_shortcuts = cleanup_legacy_user_shortcuts_cmd(&app_name),
         import_config = get_import_config(&exe),
     );
     run_cmds(cmds, debug, "install")?;
