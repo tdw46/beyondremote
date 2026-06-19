@@ -15,7 +15,7 @@ const OPT_HBBS_PATH: &str = "managed-server-hbbs-path";
 const OPT_HBBR_PATH: &str = "managed-server-hbbr-path";
 const OPT_PUBLIC_HOST: &str = "managed-server-public-host";
 const LOCAL_HOST: &str = "127.0.0.1";
-const API_SERVER: &str = "";
+const DEFAULT_ACCOUNT_API_SERVER: &str = "https://admin.rustdesk.com";
 const RELEASE_API: &str = "https://api.github.com/repos/rustdesk/rustdesk-server/releases/latest";
 
 lazy_static::lazy_static! {
@@ -194,7 +194,7 @@ fn status() -> ManagedStatus {
         public_host: public_host(),
         id_server: id_server(),
         relay_server: relay_server(),
-        api_server: API_SERVER.to_owned(),
+        api_server: account_api_server(),
         key,
         message,
     }
@@ -242,9 +242,20 @@ fn start() -> ResultType<()> {
 fn apply_client_config() {
     Config::set_option("custom-rendezvous-server".to_owned(), id_server());
     Config::set_option("relay-server".to_owned(), relay_server());
-    Config::set_option("api-server".to_owned(), API_SERVER.to_owned());
+    if Config::get_option("api-server").trim().is_empty() {
+        Config::set_option("api-server".to_owned(), DEFAULT_ACCOUNT_API_SERVER.to_owned());
+    }
     if let Some(key) = read_key() {
         Config::set_option("key".to_owned(), key);
+    }
+}
+
+fn account_api_server() -> String {
+    let configured = Config::get_option("api-server").trim().to_owned();
+    if configured.is_empty() {
+        DEFAULT_ACCOUNT_API_SERVER.to_owned()
+    } else {
+        configured
     }
 }
 

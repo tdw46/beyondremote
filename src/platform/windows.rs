@@ -1463,6 +1463,9 @@ fn cleanup_legacy_user_shortcuts_cmd(app_name: &str) -> String {
     let legacy_app_name = "Beyond Remote";
     format!(
         "
+        taskkill /F /IM rustdesk.exe >nul 2>nul
+        if exist \"%LOCALAPPDATA%\\rustdesk\" rd /s /q \"%LOCALAPPDATA%\\rustdesk\"
+        if exist \"%LOCALAPPDATA%\\RustDesk\" rd /s /q \"%LOCALAPPDATA%\\RustDesk\"
         if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}.lnk\" del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}.lnk\"
         if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\\{app_name}.lnk\" del /f /q \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\\{app_name}.lnk\"
         if exist \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\" rd \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\{app_name}\"

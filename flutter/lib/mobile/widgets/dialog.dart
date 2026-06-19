@@ -357,7 +357,7 @@ void showServerSettingsWithValue(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Enter your self-hosted server values. Relay and key can stay empty when your deployment does not use them. API is required for login, address books, and synced server settings.',
+                    'Enter your ID/relay server values. Relay and key can stay empty when your deployment does not use them. Use the official RustDesk API for an existing RustDesk account, or a compatible self-hosted API for login, address books, and synced settings.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   SizedBox(height: 12),
@@ -386,9 +386,9 @@ void showServerSettingsWithValue(
                     translate('API Server'),
                     apiCtrl,
                     apiServerMsg.value,
-                    hintText: 'https://hbbs.example.com',
+                    hintText: 'https://admin.rustdesk.com',
                     helperText:
-                        'Web/API endpoint for accounts, address books, and synced server settings.',
+                        'Account API endpoint. Managed hbbs/hbbr uses the official RustDesk API by default unless you enter your own compatible API server.',
                     validator: (v) {
                       if (v != null && v.isNotEmpty) {
                         if (!(v.startsWith('http://') ||
