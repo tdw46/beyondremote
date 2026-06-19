@@ -13,9 +13,8 @@ use std::{
 const OPT_ENABLED: &str = "managed-server-enabled";
 const OPT_HBBS_PATH: &str = "managed-server-hbbs-path";
 const OPT_HBBR_PATH: &str = "managed-server-hbbr-path";
-const SERVER_HOST: &str = "127.0.0.1";
-const ID_SERVER: &str = "127.0.0.1:21116";
-const RELAY_SERVER: &str = "127.0.0.1:21117";
+const OPT_PUBLIC_HOST: &str = "managed-server-public-host";
+const LOCAL_HOST: &str = "127.0.0.1";
 const API_SERVER: &str = "";
 const RELEASE_API: &str = "https://api.github.com/repos/rustdesk/rustdesk-server/releases/latest";
 
@@ -44,9 +43,10 @@ struct ManagedStatus {
     install_dir: String,
     hbbs_path: String,
     hbbr_path: String,
-    id_server: &'static str,
-    relay_server: &'static str,
-    api_server: &'static str,
+    public_host: String,
+    id_server: String,
+    relay_server: String,
+    api_server: String,
     key: String,
     message: String,
 }
@@ -106,6 +106,7 @@ pub fn handle_command(key: &str, value: &str) {
             if is_installing() {
                 return;
             }
+            save_public_host(value);
             Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
             clear_last_error();
             set_installing(true);
@@ -119,6 +120,7 @@ pub fn handle_command(key: &str, value: &str) {
             });
         }
         "managed-server-start" => {
+            save_public_host(value);
             Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
             clear_last_error();
             start_if_enabled();
@@ -140,6 +142,11 @@ pub fn handle_command(key: &str, value: &str) {
                 );
                 clear_last_error();
             }
+        }
+        "managed-server-set-public-host" => {
+            save_public_host(value);
+            apply_client_config();
+            clear_last_error();
         }
         _ => {}
     }
@@ -165,7 +172,11 @@ fn status() -> ManagedStatus {
     } else if !installed {
         "Ready to install the open-source self-hosted server.".to_owned()
     } else if running {
-        "Self-hosted server is running and this client is configured to use it.".to_owned()
+        if public_host().is_empty() {
+            "Self-hosted server is running for this computer. Add a public DNS name or IP to connect from other networks.".to_owned()
+        } else {
+            "Self-hosted server is running and this client is configured to use its public address.".to_owned()
+        }
     } else {
         "Self-hosted server is installed and ready to start.".to_owned()
     };
@@ -180,9 +191,10 @@ fn status() -> ManagedStatus {
         install_dir: install_dir().to_string_lossy().to_string(),
         hbbs_path: hbbs_path.to_string_lossy().to_string(),
         hbbr_path: hbbr_path.to_string_lossy().to_string(),
-        id_server: ID_SERVER,
-        relay_server: RELAY_SERVER,
-        api_server: API_SERVER,
+        public_host: public_host(),
+        id_server: id_server(),
+        relay_server: relay_server(),
+        api_server: API_SERVER.to_owned(),
         key,
         message,
     }
@@ -219,7 +231,7 @@ fn start() -> ResultType<()> {
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
     managed.hbbr = Some(spawn_server(&hbbr_path, &work_dir, &[])?);
-    let relay_arg = format!("{SERVER_HOST}:21117");
+    let relay_arg = relay_server();
     managed.hbbs = Some(spawn_server(&hbbs_path, &work_dir, &["-r", &relay_arg])?);
     managed.last_error.clear();
     drop(managed);
@@ -228,8 +240,8 @@ fn start() -> ResultType<()> {
 }
 
 fn apply_client_config() {
-    Config::set_option("custom-rendezvous-server".to_owned(), ID_SERVER.to_owned());
-    Config::set_option("relay-server".to_owned(), RELAY_SERVER.to_owned());
+    Config::set_option("custom-rendezvous-server".to_owned(), id_server());
+    Config::set_option("relay-server".to_owned(), relay_server());
     Config::set_option("api-server".to_owned(), API_SERVER.to_owned());
     if let Some(key) = read_key() {
         Config::set_option("key".to_owned(), key);
@@ -237,13 +249,20 @@ fn apply_client_config() {
 }
 
 fn spawn_server(path: &Path, work_dir: &Path, args: &[&str]) -> io::Result<Child> {
-    Command::new(path)
+    let mut command = Command::new(path);
+    command
         .args(args)
         .current_dir(work_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+        .stderr(Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
+    command.spawn()
 }
 
 fn child_running(child: &mut Child) -> bool {
@@ -371,6 +390,82 @@ fn find_extracted_binary(stem: &str) -> ResultType<PathBuf> {
 
 fn install_dir() -> PathBuf {
     data_root().join("managed-server")
+}
+
+fn save_public_host(value: &str) {
+    let host = normalize_public_host(value);
+    Config::set_option(OPT_PUBLIC_HOST.to_owned(), host);
+}
+
+fn public_host() -> String {
+    normalize_public_host(&Config::get_option(OPT_PUBLIC_HOST))
+}
+
+fn server_host() -> String {
+    let host = public_host();
+    if host.is_empty() {
+        LOCAL_HOST.to_owned()
+    } else {
+        host
+    }
+}
+
+fn id_server() -> String {
+    host_with_port(&server_host(), hbb_common::config::RENDEZVOUS_PORT)
+}
+
+fn relay_server() -> String {
+    host_with_port(&server_host(), hbb_common::config::RELAY_PORT)
+}
+
+fn normalize_public_host(value: &str) -> String {
+    let mut host = value.trim();
+    if let Some(rest) = host.strip_prefix("https://") {
+        host = rest;
+    } else if let Some(rest) = host.strip_prefix("http://") {
+        host = rest;
+    }
+    if let Some((before_path, _)) = host.split_once('/') {
+        host = before_path;
+    }
+    strip_default_server_port(host.trim()).to_owned()
+}
+
+fn host_with_port(host: &str, port: i32) -> String {
+    if has_explicit_port(host) {
+        host.to_owned()
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
+fn strip_default_server_port(host: &str) -> &str {
+    let Some((base, port)) = host.rsplit_once(':') else {
+        return host;
+    };
+    if base.ends_with(']') {
+        return host;
+    }
+    if let Ok(port) = port.parse::<i32>() {
+        if port == hbb_common::config::RENDEZVOUS_PORT
+            || port == hbb_common::config::RELAY_PORT
+        {
+            return base;
+        }
+    }
+    host
+}
+
+fn has_explicit_port(host: &str) -> bool {
+    if host.starts_with('[') {
+        return host
+            .rsplit_once("]:")
+            .and_then(|(_, port)| port.parse::<u16>().ok())
+            .is_some();
+    }
+    host.rsplit_once(':')
+        .and_then(|(_, port)| port.parse::<u16>().ok())
+        .is_some()
 }
 
 fn data_root() -> PathBuf {

@@ -122,6 +122,7 @@ impl Drop for SimpleCallOnReturn {
 }
 
 pub fn global_init() -> bool {
+    set_beyond_remote_defaults();
     #[cfg(target_os = "linux")]
     {
         if !crate::platform::linux::is_x11() {
@@ -133,6 +134,13 @@ pub fn global_init() -> bool {
         crate::managed_server::start_if_enabled();
     }
     true
+}
+
+fn set_beyond_remote_defaults() {
+    let mut app_name = hbb_common::config::APP_NAME.write().unwrap();
+    if app_name.eq("RustDesk") {
+        *app_name = "BeyondRemote".to_owned();
+    }
 }
 
 pub fn global_clean() {
@@ -1009,6 +1017,7 @@ pub async fn do_check_software_update() -> hbb_common::ResultType<()> {
 
 #[inline]
 pub fn get_app_name() -> String {
+    set_beyond_remote_defaults();
     hbb_common::config::APP_NAME.read().unwrap().clone()
 }
 

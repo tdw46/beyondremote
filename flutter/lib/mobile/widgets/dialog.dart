@@ -76,6 +76,7 @@ void showServerSettingsWithValue(
   final keyCtrl = TextEditingController(text: serverConfig.key);
   final managedHbbsCtrl = TextEditingController();
   final managedHbbrCtrl = TextEditingController();
+  final managedPublicHostCtrl = TextEditingController();
 
   RxString idServerMsg = ''.obs;
   RxString relayServerMsg = ''.obs;
@@ -103,6 +104,10 @@ void showServerSettingsWithValue(
             }
             if (managedHbbrCtrl.text.isEmpty) {
               managedHbbrCtrl.text = status['hbbr_path']?.toString() ?? '';
+            }
+            if (managedPublicHostCtrl.text.isEmpty) {
+              managedPublicHostCtrl.text =
+                  status['public_host']?.toString() ?? '';
             }
             if (status['running'] == true) {
               idCtrl.text = status['id_server']?.toString() ?? idCtrl.text;
@@ -148,6 +153,8 @@ void showServerSettingsWithValue(
       final enabled = managedStatus['enabled'] == true;
       final message = managedStatus['message']?.toString() ??
           'Manage a local open-source hbbs/hbbr server for this client.';
+      const publicAccessHelp =
+          'Local-only keeps the server on this computer and is best for testing. Home router uses your public home IP or DNS name plus router port forwarding. Public VPS uses a tiny internet VM; Beyond Remote can manage the server there once you provide SSH or cloud credentials. Vercel-style web hosts are not suitable for the relay because this server needs always-on TCP and UDP ports.';
 
       return Container(
         width: double.infinity,
@@ -163,6 +170,23 @@ void showServerSettingsWithValue(
                 style: Theme.of(context).textTheme.titleSmall),
             SizedBox(height: 6),
             Text(message, style: Theme.of(context).textTheme.bodySmall),
+            SizedBox(height: 6),
+            Tooltip(
+              message: publicAccessHelp,
+              child: Text(
+                'Internet access works best from a public VPS. Home hosting also works when your router forwards TCP 21115-21119 and UDP 21116. Leave the public address empty for local-only testing.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+            SizedBox(height: 10),
+            serverSettingsTextFormField(
+              label: 'Public address',
+              controller: managedPublicHostCtrl,
+              errorMsg: '',
+              hintText: 'remote.example.com or 203.0.113.10',
+              helperText:
+                  'Use a public VPS DNS/IP for easiest internet access. Home hosting needs router forwarding. Leave empty for this computer only.',
+            ),
             if (!supportedInstall) ...[
               SizedBox(height: 10),
               serverSettingsTextFormField(
@@ -206,7 +230,8 @@ void showServerSettingsWithValue(
                         ? null
                         : () async {
                             await bind.mainSetCommon(
-                                key: 'managed-server-install', value: '');
+                                key: 'managed-server-install',
+                                value: managedPublicHostCtrl.text.trim());
                             await refreshManagedStatusFor(
                                 Duration(seconds: 90));
                           },
@@ -238,9 +263,9 @@ void showServerSettingsWithValue(
                                   }));
                             }
                             await bind.mainSetCommon(
-                                key: 'managed-server-start', value: '');
-                            await refreshManagedStatusFor(
-                                Duration(seconds: 8));
+                                key: 'managed-server-start',
+                                value: managedPublicHostCtrl.text.trim());
+                            await refreshManagedStatusFor(Duration(seconds: 8));
                           },
                   ),
               ],
@@ -256,6 +281,9 @@ void showServerSettingsWithValue(
       setState(() {
         isInProgress = true;
       });
+      await bind.mainSetCommon(
+          key: 'managed-server-set-public-host',
+          value: managedPublicHostCtrl.text.trim());
       bool ret = await setServerConfig(
           null,
           errMsgs,
@@ -329,7 +357,7 @@ void showServerSettingsWithValue(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Enter your self-hosted rustdesk-server values. Relay, API, and key can stay empty when your deployment does not use them.',
+                    'Enter your self-hosted server values. Relay, API, and key can stay empty when your deployment does not use them.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   SizedBox(height: 12),

@@ -122,6 +122,10 @@ class AbModel {
     if (bind.isDisableAb()) return;
     if (!gFFI.userModel.isLogin) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
+    if (!_hasConfiguredApiServer()) {
+      clearPullErrors();
+      return;
+    }
     if (_pulling) return;
     if (force == null && _pulledOnce) {
       return;
@@ -2019,4 +2023,8 @@ String _jsonDecodeActionResp(http.Response resp) {
 // https://github.com/seanmonstar/reqwest/issues/838
 void _setEmptyBody(Map<String, String> headers) {
   headers['Content-Length'] = '0';
+}
+
+bool _hasConfiguredApiServer() {
+  return bind.mainGetOptionSync(key: 'api-server').trim().isNotEmpty;
 }

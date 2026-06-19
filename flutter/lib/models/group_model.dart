@@ -41,6 +41,15 @@ class GroupModel {
     if (!gFFI.userModel.isLogin || groupLoading.value) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
     if (!force && initialized) return;
+    if (!_hasConfiguredApiServer()) {
+      groupLoadError.value = '';
+      deviceGroups.clear();
+      users.clear();
+      peers.clear();
+      initialized = true;
+      platformFFI.tryHandle({'name': LoadEvent.group});
+      return;
+    }
     if (!quiet) {
       groupLoading.value = true;
       groupLoadError.value = "";
@@ -373,6 +382,11 @@ class GroupModel {
       users.clear();
       peers.clear();
       deviceGroups.clear();
+      groupLoadError.value = '';
     }
   }
+}
+
+bool _hasConfiguredApiServer() {
+  return bind.mainGetOptionSync(key: 'api-server').trim().isNotEmpty;
 }
