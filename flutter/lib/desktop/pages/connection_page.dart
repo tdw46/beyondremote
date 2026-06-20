@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -277,9 +278,12 @@ class _ConnectionPageState extends State<ConnectionPage>
   }
 
   @override
-  void onWindowClose() {
+  void onWindowClose() async {
     super.onWindowClose();
-    bind.mainOnMainWindowClose();
+    await bind.mainOnMainWindowClose();
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
+    exit(0);
   }
 
   void onFocusChanged() {
