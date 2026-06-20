@@ -5,6 +5,7 @@
     <Configurations>Release</Configurations>
     <Platforms>x64;ARM64</Platforms>
   </PropertyGroup>
+  <Import Project="GeneratedDefines.props" Condition="Exists('GeneratedDefines.props')" />
   <ItemGroup>
     <Content Include="Includes.wxi" />
     <Content Include="Resources\icon.ico" />

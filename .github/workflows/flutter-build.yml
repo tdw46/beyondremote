@@ -345,8 +345,9 @@ jobs:
         # is x64 / ARM64; the produced Package.msi is globbed since its bin/<platform>/ dir varies.
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
+          Rename-Item .\rustdesk\rustdesk.exe BeyondRemote.exe
           pushd ./res/msi
-          python preprocess.py --arp --app-name "Beyond Remote" -d ../../rustdesk
+          python preprocess.py --arp --app-name BeyondRemote -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
@@ -1358,7 +1359,7 @@ jobs:
         if: env.ANDROID_SIGNING_KEY != null && env.UPLOAD_ARTIFACT == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: beyondremote-${{ env.VERSION }}-${{ matrix.job.arch }}.apk
+          name: beyondremote-${{ env.VERSION }}-universal${{ env.suffix }}.apk
           path: ${{steps.sign-rustdesk.outputs.signedReleaseFile}}
 
       - name: Publish signed apk package
@@ -1711,7 +1712,9 @@ jobs:
         if: matrix.job.arch == 'x86_64' && env.UPLOAD_ARTIFACT == 'true'
         shell: bash
         run: |
+          sudo chown -R "$USER:$USER" res || true
           for pkg in res/rustdesk-${{ env.VERSION }}*.zst; do
+            [ -e "$pkg" ] || continue
             mv "$pkg" "${pkg/rustdesk-/beyondremote-}"
           done
 
@@ -2090,7 +2093,7 @@ jobs:
             flatpak/beyondremote-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.flatpak
 
   build-rustdesk-web:
-    if: False
+    if: ${{ vars.ENABLE_WEB_BUILD == 'true' }}
     name: build-rustdesk-web
     runs-on: ubuntu-22.04
     permissions:

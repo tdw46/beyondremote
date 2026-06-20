@@ -12,6 +12,7 @@ import platform
 from pathlib import Path
 from itertools import chain
 import shutil
+from xml.sax.saxutils import escape as xml_escape
 
 g_indent_unit = "\t"
 g_version = ""
@@ -150,25 +151,53 @@ def gen_auto_component(app_name, dist_dir):
     )
 
 
+def get_pre_vars(args, dist_dir):
+    product_lower = args.app_name.lower()
+    reg_key_root = f".{product_lower}"
+    upgrade_code = uuid.uuid5(uuid.NAMESPACE_OID, args.app_name + ".exe")
+    return [
+        ("Version", g_version),
+        ("Manufacturer", args.manufacturer),
+        ("Product", args.app_name),
+        ("Description", f"{args.app_name} Installer"),
+        ("ProductLower", product_lower),
+        ("RegKeyRoot", reg_key_root),
+        ("RegKeyInstall", f"{reg_key_root}\\Install"),
+        ("BuildDir", str(dist_dir)),
+        ("BuildDate", g_build_date),
+        ("UpgradeCode", str(upgrade_code)),
+    ]
+
+
+def gen_msbuild_define_props(args, dist_dir):
+    defines = ";".join(f"{name}={value}" for name, value in get_pre_vars(args, dist_dir))
+    props_path = Path(sys.argv[0]).parent.joinpath("Package/GeneratedDefines.props")
+    props_path.write_text(
+        """<Project>
+  <PropertyGroup>
+    <DefineConstants>$(DefineConstants);%s</DefineConstants>
+  </PropertyGroup>
+</Project>
+"""
+        % xml_escape(defines, {'"': "&quot;"}),
+        encoding="utf-8",
+    )
+    return True
+
+
 def gen_pre_vars(args, dist_dir):
     def func(lines, index_start):
-        upgrade_code = uuid.uuid5(uuid.NAMESPACE_OID, app_name + ".exe")
-
         indent = g_indent_unit * 1
-        to_insert_lines = [
-            f'{indent}<?define Version="{g_version}" ?>\n',
-            f'{indent}<?define Manufacturer="{args.manufacturer}" ?>\n',
-            f'{indent}<?define Product="{args.app_name}" ?>\n',
-            f'{indent}<?define Description="{args.app_name} Installer" ?>\n',
-            f'{indent}<?define ProductLower="{args.app_name.lower()}" ?>\n',
-            f'{indent}<?define RegKeyRoot=".$(var.ProductLower)" ?>\n',
-            f'{indent}<?define RegKeyInstall="$(var.RegKeyRoot)\\Install" ?>\n',
-            f'{indent}<?define BuildDir="{dist_dir}" ?>\n',
-            f'{indent}<?define BuildDate="{g_build_date}" ?>\n',
-            "\n",
-            f"{indent}<!-- The UpgradeCode must be consistent for each product. ! -->\n"
-            f'{indent}<?define UpgradeCode = "{upgrade_code}" ?>\n',
-        ]
+        to_insert_lines = []
+        for name, value in get_pre_vars(args, dist_dir):
+            if name == "UpgradeCode":
+                to_insert_lines.append("\n")
+                to_insert_lines.append(
+                    f"{indent}<!-- The UpgradeCode must be consistent for each product. ! -->\n"
+                )
+                to_insert_lines.append(f'{indent}<?define {name} = "{value}" ?>\n')
+            else:
+                to_insert_lines.append(f'{indent}<?define {name}="{value}" ?>\n')
 
         for i, line in enumerate(to_insert_lines):
             lines.insert(index_start + i + 1, line)
@@ -536,6 +565,9 @@ if __name__ == "__main__":
     update_license_file(app_name)
 
     if not gen_pre_vars(args, dist_dir):
+        sys.exit(-1)
+
+    if not gen_msbuild_define_props(args, dist_dir):
         sys.exit(-1)
 
     if app_name != "RustDesk":

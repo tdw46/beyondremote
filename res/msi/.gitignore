@@ -11,3 +11,4 @@ CustomActions/*.user
 CustomActions/*.filters
 
 Package/Resources
+Package/GeneratedDefines.props
