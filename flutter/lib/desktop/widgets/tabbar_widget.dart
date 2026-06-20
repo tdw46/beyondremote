@@ -432,7 +432,11 @@ class _DesktopTabState extends State<DesktopTab>
 
   @override
   void onWindowClose() async {
-    mainWindowClose() async => await windowManager.hide();
+    mainWindowClose() async {
+      await bind.mainOnMainWindowClose();
+      await windowManager.setPreventClose(false);
+      await windowManager.close();
+    }
     notMainWindowClose(WindowController windowController) async {
       if (controller.length != 0) {
         debugPrint("close not empty multiwindow from taskbar");
