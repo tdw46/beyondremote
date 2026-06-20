@@ -89,6 +89,7 @@ pub struct UserPayload {
     pub note: Option<String>,
     #[serde(default)]
     pub status: UserStatus,
+    #[serde(default)]
     pub info: UserInfo,
     #[serde(default)]
     pub is_admin: bool,
@@ -298,11 +299,17 @@ impl OidcSession {
                         return;
                     }
                 }
-                Ok(_) => {
-                    // ignore
+                Ok(unexpected) => {
+                    let msg = format!("Invalid auth-query response: {:?}", unexpected);
+                    log::warn!("{}", msg);
+                    OIDC_SESSION
+                        .write()
+                        .unwrap()
+                        .set_state(WAITING_ACCOUNT_AUTH, msg);
+                    return;
                 }
                 Err(err) => {
-                    log::trace!("Failed query oidc {}", err);
+                    log::warn!("Failed query oidc {}", err);
                     // ignore
                 }
             }

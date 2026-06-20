@@ -328,7 +328,7 @@ function oidc_auth_query(): void
     if (!$row || empty($row['auth_body'])) {
         send_json(['error' => 'No authed oidc is found'], 404);
     }
-    send_json(json_decode($row['auth_body'], true));
+    send_json(normalize_auth_body(json_decode($row['auth_body'], true) ?: []));
 }
 
 function oauth_start(string $provider): void
@@ -681,10 +681,31 @@ function create_session(int $userId): string
 
 function auth_body(array $user, string $token): array
 {
-    return [
+    return normalize_auth_body([
         'type' => 'access_token',
         'access_token' => $token,
         'user' => user_payload($user),
+    ]);
+}
+
+function normalize_auth_body(array $body): array
+{
+    if (!isset($body['user']) || !is_array($body['user'])) {
+        $body['user'] = [];
+    }
+    if (!isset($body['user']['info']) || !is_array($body['user']['info'])) {
+        $body['user']['info'] = default_user_info();
+    }
+    return $body;
+}
+
+function default_user_info(): array
+{
+    return [
+        'email_verification' => false,
+        'email_alarm_notification' => false,
+        'login_device_whitelist' => [],
+        'other' => new stdClass(),
     ];
 }
 
@@ -699,6 +720,7 @@ function user_payload(array $user): array
         'status' => (int)$user['status'],
         'is_admin' => (bool)$user['is_admin'],
         'verifier' => '',
+        'info' => default_user_info(),
     ];
 }
 
