@@ -36,6 +36,8 @@ class OnlineStatusWidget extends StatefulWidget {
 class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   final _svcStopped = Get.find<RxBool>(tag: 'stop-service');
   final _svcIsUsingPublicServer = true.obs;
+  final _managedServerNeedsStart = false.obs;
+  String _managedServerPublicHost = '';
   Timer? _updateTimer;
 
   double get em => 14.0;
@@ -69,6 +71,21 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
                     await start_service(true);
                   },
                   child: Text(translate("Start service"),
+                      style: TextStyle(
+                          decoration: TextDecoration.underline, fontSize: em)))
+              .marginOnly(left: em),
+        );
+
+    startManagedServerWidget() => Offstage(
+          offstage: !_managedServerNeedsStart.value,
+          child: InkWell(
+                  onTap: () async {
+                    await bind.mainSetCommon(
+                        key: 'managed-server-start',
+                        value: _managedServerPublicHost);
+                    await updateStatus();
+                  },
+                  child: Text('Start self-hosted server',
                       style: TextStyle(
                           decoration: TextDecoration.underline, fontSize: em)))
               .marginOnly(left: em),
@@ -127,6 +144,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
             ),
             // stop
             if (!isIncomingOnly) startServiceWidget(),
+            if (!isIncomingOnly) startManagedServerWidget(),
             // ready && public
             // No need to show the guide if is custom client.
             if (!isIncomingOnly) setupServerWidget(),
@@ -180,6 +198,27 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
     try {
       stateGlobal.videoConnCount.value = status['video_conn_count'] as int;
     } catch (_) {}
+    await updateManagedServerStatus();
+  }
+
+  Future<void> updateManagedServerStatus() async {
+    try {
+      final raw = await bind.mainGetCommon(key: 'managed-server-status');
+      final status = jsonDecode(raw);
+      if (status is! Map<String, dynamic>) {
+        _managedServerNeedsStart.value = false;
+        return;
+      }
+      final supportedRun = status['supported_run'] == true;
+      final installed = status['installed'] == true;
+      final running = status['running'] == true;
+      final installing = status['installing'] == true;
+      _managedServerPublicHost = status['public_host']?.toString() ?? '';
+      _managedServerNeedsStart.value =
+          supportedRun && installed && !running && !installing;
+    } catch (_) {
+      _managedServerNeedsStart.value = false;
+    }
   }
 }
 

@@ -5,7 +5,6 @@
 #include <windows.h>
 
 #include <algorithm>
-#include <cwctype>
 #include <iostream>
 
 #include "win32_desktop.h"
@@ -20,25 +19,6 @@ const std::vector<std::string> parameters_white_list = {"--install", "--cm"};
 
 const wchar_t* getWindowClassName();
 
-std::wstring GetCurrentExePath() {
-  wchar_t exe_path[MAX_PATH] = {0};
-  DWORD copied = ::GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
-  if (copied == 0 || copied >= MAX_PATH) {
-    return L"";
-  }
-  return std::wstring(exe_path);
-}
-
-std::wstring ToLower(std::wstring value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
-  return value;
-}
-
-bool SamePath(const std::wstring& left, const std::wstring& right) {
-  return !left.empty() && !right.empty() && ToLower(left) == ToLower(right);
-}
-
 bool AllowsMultipleInstances(const std::vector<std::string>& arguments) {
   for (const auto& whitelist_param : parameters_white_list) {
     if (std::find(arguments.begin(), arguments.end(), whitelist_param) !=
@@ -49,53 +29,18 @@ bool AllowsMultipleInstances(const std::vector<std::string>& arguments) {
   return false;
 }
 
-struct ExistingWindowSearch {
-  DWORD current_pid = 0;
-  std::wstring current_exe_path;
-  HWND window = nullptr;
-};
-
-BOOL CALLBACK FindExistingAppWindowProc(HWND hwnd, LPARAM lparam) {
-  auto* search = reinterpret_cast<ExistingWindowSearch*>(lparam);
-  if (!::IsWindowVisible(hwnd)) {
-    return TRUE;
+HWND FindExistingMainWindow(const std::wstring& app_name) {
+  HWND hwnd = ::FindWindowW(getWindowClassName(), app_name.c_str());
+  if (hwnd != NULL) {
+    return hwnd;
   }
-
-  DWORD pid = 0;
-  ::GetWindowThreadProcessId(hwnd, &pid);
-  if (pid == 0 || pid == search->current_pid) {
-    return TRUE;
+  // Older fork builds briefly used a spaced display name before the app name
+  // was normalized to BeyondRemote. Keep the fallback so those windows still
+  // get focused instead of creating a duplicate main process.
+  if (app_name != L"Beyond Remote") {
+    return ::FindWindowW(getWindowClassName(), L"Beyond Remote");
   }
-
-  HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-  if (process == nullptr) {
-    return TRUE;
-  }
-
-  wchar_t process_path[MAX_PATH] = {0};
-  DWORD process_path_len = MAX_PATH;
-  bool same_exe = ::QueryFullProcessImageNameW(process, 0, process_path,
-                                               &process_path_len) &&
-                  SamePath(search->current_exe_path, std::wstring(process_path));
-  ::CloseHandle(process);
-
-  if (!same_exe) {
-    return TRUE;
-  }
-
-  search->window = hwnd;
-  return FALSE;
-}
-
-HWND FindExistingAppWindow() {
-  ExistingWindowSearch search;
-  search.current_pid = ::GetCurrentProcessId();
-  search.current_exe_path = GetCurrentExePath();
-  if (search.current_exe_path.empty()) {
-    return nullptr;
-  }
-  ::EnumWindows(FindExistingAppWindowProc, reinterpret_cast<LPARAM>(&search));
-  return search.window;
+  return ::FindWindowW(getWindowClassName(), L"BeyondRemote");
 }
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
@@ -109,7 +54,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   if (!AllowsMultipleInstances(command_line_arguments)) {
-    HWND existing_hwnd = FindExistingAppWindow();
+    HWND existing_hwnd = FindExistingMainWindow(L"BeyondRemote");
     if (existing_hwnd != NULL) {
       if (!command_line_arguments.empty()) {
         DispatchToUniLinksDesktop(existing_hwnd);
@@ -165,7 +110,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   // Uri links dispatch
-  HWND hwnd = ::FindWindowW(getWindowClassName(), app_name.c_str());
+  HWND hwnd = FindExistingMainWindow(app_name);
   if (hwnd != NULL) {
     // Allow multiple flutter instances when being executed by parameters
     // contained in whitelists.
