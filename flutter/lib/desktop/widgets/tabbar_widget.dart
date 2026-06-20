@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -436,6 +437,7 @@ class _DesktopTabState extends State<DesktopTab>
       await bind.mainOnMainWindowClose();
       await windowManager.setPreventClose(false);
       await windowManager.close();
+      exit(0);
     }
     notMainWindowClose(WindowController windowController) async {
       if (controller.length != 0) {
