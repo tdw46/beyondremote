@@ -1994,7 +1994,7 @@ jobs:
           # run appimage-builder
           pushd appimage
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
-          sudo chown "$USER:$USER" rustdesk-${{ env.VERSION }}-*.AppImage
+          sudo chown -R "$USER:$USER" .
           for name in rustdesk-${{ env.VERSION }}-*.AppImage; do
             mv "$name" "${name/rustdesk-/beyondremote-}"
           done
