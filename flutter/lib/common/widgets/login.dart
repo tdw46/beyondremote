@@ -194,17 +194,18 @@ class _WidgetOPState extends State<WidgetOP> {
       final String? url = resultMap['url'];
       final bool urlLaunched = (resultMap['url_launched'] as bool?) ?? false;
       final authBody = resultMap['auth_body'];
+      if (authBody != null) {
+        _updateTimer?.cancel();
+        widget.curOP.value = '';
+        widget.cbLogin(authBody as Map<String, dynamic>);
+        return;
+      }
       if (_stateMsg != stateMsg || _failedMsg != failedMsg) {
         if (_url.isEmpty && url != null && url.isNotEmpty) {
           if (!urlLaunched) {
             launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
           }
           _url = url;
-        }
-        if (authBody != null) {
-          _updateTimer?.cancel();
-          widget.curOP.value = '';
-          widget.cbLogin(authBody as Map<String, dynamic>);
         }
 
         setState(() {
