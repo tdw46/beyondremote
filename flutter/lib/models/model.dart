@@ -979,17 +979,25 @@ class FfiModel with ChangeNotifier {
     _restartReconnectDelayTimer = null;
   }
 
-  /// Auto-retry check for "Remote desktop is offline" error.
+  /// Auto-retry check for transient connection errors.
   /// returns true to auto-retry, false otherwise.
   bool shouldAutoRetryOnOffline(
     String type,
     String title,
     String text,
   ) {
-    if (type == 'error' &&
-        title == 'Connection Error' &&
-        text == 'Remote desktop is offline' &&
-        _pi.isSet.isTrue) {
+    if (type == 'error' && title == 'Connection Error' && _pi.isSet.isTrue) {
+      final lower = text.toLowerCase();
+      final isOffline = text == 'Remote desktop is offline';
+      final isTransientDrop = lower.contains('deadline has elapsed') ||
+          lower.contains('10054') ||
+          lower.contains('forcibly closed') ||
+          lower.contains('timed out') ||
+          lower.contains('connection reset') ||
+          lower.contains('connection aborted');
+      if (!isOffline && !isTransientDrop) {
+        return false;
+      }
       // Auto retry for ~30s (server's peer offline threshold) when controlled peer's account changes
       // (e.g., signout, switch user, login into OS) causes temporary offline via websocket/tcp connection.
       // The actual wait may exceed 30s (e.g., 20s elapsed + 16s next retry = 36s), which is acceptable
@@ -1003,7 +1011,7 @@ class FfiModel with ChangeNotifier {
       } else {
         final elapsed =
             DateTime.now().difference(_offlineReconnectStartTime!).inSeconds;
-        if (elapsed < 30) {
+        if (elapsed < (isOffline ? 30 : 120)) {
           return true;
         }
       }
@@ -1077,7 +1085,7 @@ class FfiModel with ChangeNotifier {
       _timer = Timer(Duration(seconds: _reconnects), () {
         reconnect(dialogManager, sessionId, false);
       });
-      _reconnects *= 2;
+      _reconnects = min(_reconnects * 2, 8);
     } else {
       _reconnects = 1;
       _offlineReconnectStartTime = null;

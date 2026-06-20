@@ -134,16 +134,24 @@ fn check_update(manually: bool) -> ResultType<()> {
     } else {
         let download_url = update_url.replace("tag", "download");
         let version = download_url.split('/').last().unwrap_or_default();
+        let asset_version = version
+            .trim_start_matches('v')
+            .split('-')
+            .next()
+            .unwrap_or(version);
         #[cfg(target_os = "windows")]
         let download_url = if cfg!(feature = "flutter") {
             format!(
-                "{}/rustdesk-{}-x86_64.{}",
+                "{}/beyondremote-{}-x86_64.{}",
                 download_url,
-                version,
+                asset_version,
                 if update_msi { "msi" } else { "exe" }
             )
         } else {
-            format!("{}/rustdesk-{}-x86-sciter.exe", download_url, version)
+            format!(
+                "{}/beyondremote-{}-x86-sciter.exe",
+                download_url, asset_version
+            )
         };
         log::debug!("New version available: {}", &version);
         let client = create_http_client_with_url(&download_url);

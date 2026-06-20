@@ -82,6 +82,8 @@ pub fn stop_on_shutdown() {
     let mut managed = MANAGED.lock().unwrap();
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
+    drop(managed);
+    stop_existing_managed_processes(&install_dir());
 }
 
 pub extern "C" fn stop_on_shutdown_hook() {
@@ -175,7 +177,8 @@ fn status() -> ManagedStatus {
         if public_host().is_empty() {
             "Self-hosted server is running for this computer. Add a public DNS name or IP to connect from other networks.".to_owned()
         } else {
-            "Self-hosted server is running and this client is configured to use its public address.".to_owned()
+            "Self-hosted server is running and this client is configured to use its public address."
+                .to_owned()
         }
     } else {
         "Self-hosted server is installed and ready to start.".to_owned()
@@ -202,6 +205,9 @@ fn status() -> ManagedStatus {
 
 fn start_and_apply_config() -> ResultType<()> {
     start()?;
+    if let Err(err) = crate::local_api::start() {
+        log::warn!("Failed to start Beyond Remote account API: {}", err);
+    }
     apply_client_config();
     Ok(())
 }
@@ -220,16 +226,14 @@ fn start() -> ResultType<()> {
         shutdown_hooks::add_shutdown_hook(stop_on_shutdown_hook);
     });
     let mut managed = MANAGED.lock().unwrap();
-    if managed
-        .hbbr
-        .as_mut()
-        .map_or(false, child_running)
+    if managed.hbbr.as_mut().map_or(false, child_running)
         && managed.hbbs.as_mut().map_or(false, child_running)
     {
         return Ok(());
     }
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
+    stop_existing_managed_processes(&work_dir);
     managed.hbbr = Some(spawn_server(&hbbr_path, &work_dir, &[])?);
     let relay_arg = relay_server();
     managed.hbbs = Some(spawn_server(&hbbs_path, &work_dir, &["-r", &relay_arg])?);
@@ -242,8 +246,9 @@ fn start() -> ResultType<()> {
 fn apply_client_config() {
     Config::set_option("custom-rendezvous-server".to_owned(), id_server());
     Config::set_option("relay-server".to_owned(), relay_server());
-    if Config::get_option("api-server").trim().is_empty() {
-        Config::set_option("api-server".to_owned(), DEFAULT_ACCOUNT_API_SERVER.to_owned());
+    let configured_api = Config::get_option("api-server");
+    if should_use_managed_api(&configured_api) {
+        Config::set_option("api-server".to_owned(), managed_api_server());
     }
     if let Some(key) = read_key() {
         Config::set_option("key".to_owned(), key);
@@ -253,9 +258,31 @@ fn apply_client_config() {
 fn account_api_server() -> String {
     let configured = Config::get_option("api-server").trim().to_owned();
     if configured.is_empty() {
-        DEFAULT_ACCOUNT_API_SERVER.to_owned()
+        managed_api_server()
     } else {
         configured
+    }
+}
+
+fn should_use_managed_api(configured: &str) -> bool {
+    let configured = configured.trim();
+    if configured.is_empty() {
+        return true;
+    }
+    let lower = configured.to_ascii_lowercase();
+    lower == DEFAULT_ACCOUNT_API_SERVER
+        || lower == "https://rustdesk.com"
+        || lower == "https://api.rustdesk.com"
+        || lower == crate::local_api::local_url()
+        || lower.ends_with(":21114")
+}
+
+fn managed_api_server() -> String {
+    let host = server_host();
+    if host == LOCAL_HOST {
+        crate::local_api::local_url()
+    } else {
+        format!("http://{}", host_with_port(&host, crate::local_api::API_PORT as i32))
     }
 }
 
@@ -290,6 +317,35 @@ fn stop_child(child: Option<Child>) {
     if let Some(mut child) = child {
         let _ = child.kill();
         let _ = child.wait();
+    }
+}
+
+fn stop_existing_managed_processes(work_dir: &Path) {
+    let Ok(work_dir) = fs::canonicalize(work_dir) else {
+        return;
+    };
+    let current_pid = hbb_common::sysinfo::Pid::from_u32(std::process::id());
+    let mut sys = hbb_common::sysinfo::System::new();
+    sys.refresh_processes();
+    for process in sys.processes().values() {
+        if process.pid() == current_pid {
+            continue;
+        }
+        let name = process.name().trim_end_matches(".exe");
+        if !name.eq_ignore_ascii_case("hbbs") && !name.eq_ignore_ascii_case("hbbr") {
+            continue;
+        }
+        let Ok(exe) = fs::canonicalize(process.exe()) else {
+            continue;
+        };
+        if exe.starts_with(&work_dir) {
+            log::info!(
+                "Stopping orphaned managed server process: {} ({})",
+                process.name(),
+                process.pid()
+            );
+            let _ = process.kill();
+        }
     }
 }
 
@@ -458,9 +514,7 @@ fn strip_default_server_port(host: &str) -> &str {
         return host;
     }
     if let Ok(port) = port.parse::<i32>() {
-        if port == hbb_common::config::RENDEZVOUS_PORT
-            || port == hbb_common::config::RELAY_PORT
-        {
+        if port == hbb_common::config::RENDEZVOUS_PORT || port == hbb_common::config::RELAY_PORT {
             return base;
         }
     }
@@ -519,7 +573,11 @@ fn exe_name(stem: &str) -> String {
 }
 
 fn is_run_supported() -> bool {
-    cfg!(any(target_os = "windows", target_os = "linux", target_os = "macos"))
+    cfg!(any(
+        target_os = "windows",
+        target_os = "linux",
+        target_os = "macos"
+    ))
 }
 
 fn is_install_supported() -> bool {
@@ -571,14 +629,14 @@ fn clear_last_error() {
     MANAGED.lock().unwrap().last_error.clear();
 }
 
-fn make_unix_executable(path: &Path) {
+fn make_unix_executable(_path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(metadata) = fs::metadata(path) {
+        if let Ok(metadata) = fs::metadata(_path) {
             let mut permissions = metadata.permissions();
             permissions.set_mode(0o755);
-            fs::set_permissions(path, permissions).ok();
+            fs::set_permissions(_path, permissions).ok();
         }
     }
 }

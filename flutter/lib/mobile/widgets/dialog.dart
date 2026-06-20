@@ -154,7 +154,7 @@ void showServerSettingsWithValue(
       final message = managedStatus['message']?.toString() ??
           'Manage a local open-source hbbs/hbbr server for this client.';
       const publicAccessHelp =
-          'Local-only keeps the server on this computer and is best for testing. Home router uses your public home IP or DNS name plus router port forwarding. Public VPS uses a tiny internet VM; Beyond Remote can manage the server there once you provide SSH or cloud credentials. Vercel-style web hosts are not suitable for the relay because this server needs always-on TCP and UDP ports.';
+          'Local-only keeps the server on this computer and is best for testing. Home router uses your public home IP or DNS name plus router port forwarding. Forward TCP 21114 for login and address book sync, TCP 21115-21119 for ID/relay services, and UDP 21116 for direct NAT help. Public VPS uses a tiny internet VM. Vercel-style web hosts are not suitable for the relay because this server needs always-on TCP and UDP ports.';
 
       return Container(
         width: double.infinity,
@@ -174,7 +174,7 @@ void showServerSettingsWithValue(
             Tooltip(
               message: publicAccessHelp,
               child: Text(
-                'Internet access works best from a public VPS. Home hosting also works when your router forwards TCP 21115-21119 and UDP 21116. Leave the public address empty for local-only testing.',
+                'Internet access works best from a public VPS. Home hosting also works when your router forwards TCP 21114-21119 and UDP 21116. Leave the public address empty for local-only testing.',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -185,7 +185,7 @@ void showServerSettingsWithValue(
               errorMsg: '',
               hintText: 'remote.example.com or 203.0.113.10',
               helperText:
-                  'Use a public VPS DNS/IP for easiest internet access. Home hosting needs router forwarding. Leave empty for this computer only.',
+                  'Use a public VPS DNS/IP for easiest internet access. Other devices use this for ID/relay; account sync uses the same host on TCP 21114.',
             ),
             if (!supportedInstall) ...[
               SizedBox(height: 10),

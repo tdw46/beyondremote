@@ -566,8 +566,21 @@ pub fn is_installed_lower_version() -> bool {
     return false;
     #[cfg(windows)]
     {
-        let b = crate::platform::windows::get_reg("BuildDate");
-        return crate::BUILD_DATE.cmp(&b).is_gt();
+        let installed = {
+            let version = crate::platform::windows::get_reg("Version");
+            if version.trim().is_empty() {
+                crate::platform::windows::get_reg("DisplayVersion")
+            } else {
+                version
+            }
+        };
+        let installed_version =
+            hbb_common::get_version_number(installed.trim().trim_start_matches('v'));
+        if installed_version > 0 {
+            return installed_version < hbb_common::get_version_number(crate::VERSION);
+        }
+        let installed_build_date = crate::platform::windows::get_reg("BuildDate");
+        return crate::BUILD_DATE.cmp(&installed_build_date).is_gt();
     }
 }
 

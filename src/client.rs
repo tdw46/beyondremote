@@ -3959,22 +3959,28 @@ lazy_static::lazy_static! {
 /// * `text` - The text of the message.
 #[inline]
 pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: bool) -> bool {
+    let lower = text.to_lowercase();
+    let transient_drop = lower.contains("deadline has elapsed")
+        || lower.contains("10054")
+        || lower.contains("forcibly closed")
+        || lower.contains("timed out")
+        || lower.contains("connection reset")
+        || lower.contains("connection aborted");
     msgtype == "error"
         && title == "Connection Error"
-        && ((text.contains("10054") || text.contains("104")) && retry_for_relay
-            || (!text.to_lowercase().contains("offline")
-                && !text.to_lowercase().contains("not exist")
-                && (!text.to_lowercase().contains("handshake")
+        && ((transient_drop && !lower.contains("manually"))
+            || ((text.contains("10054") || text.contains("104")) && retry_for_relay)
+            || (!lower.contains("offline")
+                && !lower.contains("not exist")
+                && (!lower.contains("handshake")
                     // https://github.com/snapview/tungstenite-rs/blob/e7e060a89a72cb08e31c25a6c7284dc1bd982e23/src/error.rs#L248
-                    || text
-                        .to_lowercase()
-                        .contains("connection reset without closing handshake") && use_ws())
-                && !text.to_lowercase().contains("failed")
-                && !text.to_lowercase().contains("resolve")
-                && !text.to_lowercase().contains("mismatch")
-                && !text.to_lowercase().contains("manually")
-                && !text.to_lowercase().contains("restricted")
-                && !text.to_lowercase().contains("not allowed")))
+                    || lower.contains("connection reset without closing handshake") && use_ws())
+                && !lower.contains("failed")
+                && !lower.contains("resolve")
+                && !lower.contains("mismatch")
+                && !lower.contains("manually")
+                && !lower.contains("restricted")
+                && !lower.contains("not allowed")))
 }
 
 pub async fn hc_connection(
