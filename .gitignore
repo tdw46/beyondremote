@@ -4,6 +4,9 @@
 .idea
 .DS_Store
 .env
+cpanel.env
+oauth.env
+*.local.env
 libsciter-gtk.so
 src/ui/inline.rs
 extractor
