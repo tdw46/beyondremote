@@ -56,7 +56,7 @@ pub struct UserInfo {
     pub settings: UserSettings,
     #[serde(default)]
     pub login_device_whitelist: Vec<WhitelistItem>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_other_map")]
     pub other: HashMap<String, String>,
 }
 
@@ -131,6 +131,20 @@ impl Default for UserStatus {
     fn default() -> Self {
         UserStatus::Normal
     }
+}
+
+fn deserialize_other_map<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
+    let serde_json::Value::Object(map) = value else {
+        return Ok(HashMap::new());
+    };
+    Ok(map
+        .into_iter()
+        .filter_map(|(key, value)| value.as_str().map(|value| (key, value.to_owned())))
+        .collect())
 }
 
 impl OidcSession {

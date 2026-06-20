@@ -2399,6 +2399,8 @@ pub fn main_account_auth_result() -> String {
 }
 
 pub fn main_on_main_window_close() {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::managed_server::stop_on_shutdown();
     // may called more than one times
     #[cfg(windows)]
     crate::portable_service::client::drop_portable_service_shared_memory();

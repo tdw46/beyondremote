@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -2833,6 +2832,7 @@ Future<void> onActiveWindowChanged() async {
       debugPrintStack(label: "$err");
     } finally {
       debugPrint("Start closing RustDesk...");
+      await bind.mainOnMainWindowClose();
       await windowManager.setPreventClose(false);
       await windowManager.close();
       if (isMacOS) {

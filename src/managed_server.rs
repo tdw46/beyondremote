@@ -230,6 +230,16 @@ fn start() -> ResultType<()> {
     {
         return Ok(());
     }
+    if existing_managed_processes(&work_dir) == (true, true) {
+        log::info!(
+            "Using existing managed self-hosted server processes from {}",
+            work_dir.display()
+        );
+        managed.last_error.clear();
+        drop(managed);
+        wait_for_key(Duration::from_secs(8));
+        return Ok(());
+    }
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
     stop_existing_managed_processes(&work_dir);
@@ -301,9 +311,11 @@ fn child_running(child: &mut Child) -> bool {
 }
 
 fn is_running() -> bool {
+    let work_dir = install_dir();
     let mut managed = MANAGED.lock().unwrap();
-    managed.hbbs.as_mut().map_or(false, child_running)
-        && managed.hbbr.as_mut().map_or(false, child_running)
+    (managed.hbbs.as_mut().map_or(false, child_running)
+        && managed.hbbr.as_mut().map_or(false, child_running))
+        || existing_managed_processes(&work_dir) == (true, true)
 }
 
 fn stop_child(child: Option<Child>) {
@@ -340,6 +352,34 @@ fn stop_existing_managed_processes(work_dir: &Path) {
             let _ = process.kill();
         }
     }
+}
+
+fn existing_managed_processes(work_dir: &Path) -> (bool, bool) {
+    let Ok(work_dir) = fs::canonicalize(work_dir) else {
+        return (false, false);
+    };
+    let current_pid = hbb_common::sysinfo::Pid::from_u32(std::process::id());
+    let mut found_hbbs = false;
+    let mut found_hbbr = false;
+    let mut sys = hbb_common::sysinfo::System::new();
+    sys.refresh_processes();
+    for process in sys.processes().values() {
+        if process.pid() == current_pid {
+            continue;
+        }
+        let name = process.name().trim_end_matches(".exe");
+        if !name.eq_ignore_ascii_case("hbbs") && !name.eq_ignore_ascii_case("hbbr") {
+            continue;
+        }
+        let Ok(exe) = fs::canonicalize(process.exe()) else {
+            continue;
+        };
+        if exe.starts_with(&work_dir) {
+            found_hbbs |= name.eq_ignore_ascii_case("hbbs");
+            found_hbbr |= name.eq_ignore_ascii_case("hbbr");
+        }
+    }
+    (found_hbbs, found_hbbr)
 }
 
 fn install_latest() -> ResultType<()> {

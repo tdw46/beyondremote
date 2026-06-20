@@ -696,6 +696,9 @@ function normalize_auth_body(array $body): array
     if (!isset($body['user']['info']) || !is_array($body['user']['info'])) {
         $body['user']['info'] = default_user_info();
     }
+    if (!isset($body['user']['info']['other']) || empty($body['user']['info']['other'])) {
+        $body['user']['info']['other'] = new stdClass();
+    }
     return $body;
 }
 
