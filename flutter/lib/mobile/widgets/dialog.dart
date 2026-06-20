@@ -357,7 +357,7 @@ void showServerSettingsWithValue(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'Enter your ID/relay server values. Relay and key can stay empty when your deployment does not use them. Use the official RustDesk API for an existing RustDesk account, or a compatible self-hosted API for login, address books, and synced settings.',
+                    'Enter your ID/relay server values. Relay and key can stay empty when your deployment does not use them. Beyond Remote uses https://api.beyondstudios.us for login, address books, and synced settings unless you enter another compatible account API.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                   SizedBox(height: 12),
@@ -386,9 +386,9 @@ void showServerSettingsWithValue(
                     translate('API Server'),
                     apiCtrl,
                     apiServerMsg.value,
-                    hintText: 'https://admin.rustdesk.com',
+                    hintText: 'https://api.beyondstudios.us',
                     helperText:
-                        'Account API endpoint. Managed hbbs/hbbr uses the official RustDesk API by default unless you enter your own compatible API server.',
+                        'Account API endpoint. Beyond Remote uses its hosted open sync API by default unless you enter another compatible API server.',
                     validator: (v) {
                       if (v != null && v.isNotEmpty) {
                         if (!(v.startsWith('http://') ||

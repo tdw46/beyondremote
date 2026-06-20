@@ -15,7 +15,6 @@ const OPT_HBBS_PATH: &str = "managed-server-hbbs-path";
 const OPT_HBBR_PATH: &str = "managed-server-hbbr-path";
 const OPT_PUBLIC_HOST: &str = "managed-server-public-host";
 const LOCAL_HOST: &str = "127.0.0.1";
-const DEFAULT_ACCOUNT_API_SERVER: &str = "https://admin.rustdesk.com";
 const RELEASE_API: &str = "https://api.github.com/repos/rustdesk/rustdesk-server/releases/latest";
 
 lazy_static::lazy_static! {
@@ -247,8 +246,11 @@ fn apply_client_config() {
     Config::set_option("custom-rendezvous-server".to_owned(), id_server());
     Config::set_option("relay-server".to_owned(), relay_server());
     let configured_api = Config::get_option("api-server");
-    if should_use_managed_api(&configured_api) {
-        Config::set_option("api-server".to_owned(), managed_api_server());
+    if should_reset_account_api(&configured_api) {
+        Config::set_option(
+            "api-server".to_owned(),
+            crate::common::DEFAULT_ACCOUNT_API_SERVER.to_owned(),
+        );
     }
     if let Some(key) = read_key() {
         Config::set_option("key".to_owned(), key);
@@ -258,32 +260,23 @@ fn apply_client_config() {
 fn account_api_server() -> String {
     let configured = Config::get_option("api-server").trim().to_owned();
     if configured.is_empty() {
-        managed_api_server()
+        crate::common::DEFAULT_ACCOUNT_API_SERVER.to_owned()
     } else {
         configured
     }
 }
 
-fn should_use_managed_api(configured: &str) -> bool {
+fn should_reset_account_api(configured: &str) -> bool {
     let configured = configured.trim();
     if configured.is_empty() {
         return true;
     }
     let lower = configured.to_ascii_lowercase();
-    lower == DEFAULT_ACCOUNT_API_SERVER
+    lower == "https://admin.rustdesk.com"
         || lower == "https://rustdesk.com"
         || lower == "https://api.rustdesk.com"
         || lower == crate::local_api::local_url()
         || lower.ends_with(":21114")
-}
-
-fn managed_api_server() -> String {
-    let host = server_host();
-    if host == LOCAL_HOST {
-        crate::local_api::local_url()
-    } else {
-        format!("http://{}", host_with_port(&host, crate::local_api::API_PORT as i32))
-    }
 }
 
 fn spawn_server(path: &Path, work_dir: &Path, args: &[&str]) -> io::Result<Child> {

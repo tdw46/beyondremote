@@ -214,7 +214,7 @@ class UserModel {
           lower.contains('failed host lookup') ||
           lower.contains('the http request failed')) {
         throw RequestException(0,
-            'Cannot reach the account API at $url. Login, address books, and synced server settings require a self-hosted API service, usually on port 21114. hbbs/hbbr alone still support remote connections by ID and password.');
+            'Cannot reach the Beyond Remote account API at $url. Login, address books, and synced settings require the hosted Beyond Remote API or another compatible account API. ID/relay servers still support direct remote connections by ID and password.');
       }
       rethrow;
     }

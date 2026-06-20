@@ -1,0 +1,20 @@
+<?php
+return [
+    'api_base_url' => 'https://api.beyondstudios.us',
+    'db' => [
+        'dsn' => 'pgsql:host=localhost;port=5432;dbname=flip2t5_beyondremote_sync',
+        'user' => 'flip2t5_beyondremote_app',
+        'password' => 'replace_with_database_password',
+    ],
+    'app_secret' => 'replace_with_a_long_random_value',
+    'oauth' => [
+        'github' => [
+            'client_id' => '',
+            'client_secret' => '',
+        ],
+        'google' => [
+            'client_id' => '',
+            'client_secret' => '',
+        ],
+    ],
+];
