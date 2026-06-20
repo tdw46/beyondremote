@@ -4018,6 +4018,81 @@ pub fn try_kill_rustdesk_main_window_process() -> ResultType<()> {
     bail!("failed to find rustdesk main window process");
 }
 
+pub fn cleanup_stale_main_window_processes_on_launch() {
+    if let Err(err) = cleanup_stale_main_window_processes_on_launch_() {
+        log::warn!("Failed to clean stale main window processes: {}", err);
+    }
+}
+
+fn cleanup_stale_main_window_processes_on_launch_() -> ResultType<()> {
+    let app_name = crate::get_app_name().to_lowercase();
+    if app_name.is_empty() {
+        bail!("app name is empty");
+    }
+    let mut sys = System::new();
+    sys.refresh_processes();
+    let my_pid = std::process::id();
+    let my_uid = sys
+        .process((my_pid as usize).into())
+        .map(|x| x.user_id())
+        .unwrap_or_default();
+    for process in sys.processes().values() {
+        let pid = process.pid().as_u32();
+        if pid == my_pid || process.user_id() != my_uid {
+            continue;
+        }
+        let process_name = process.name().to_lowercase();
+        if !(process_name == app_name || process_name == app_name.clone() + ".exe") {
+            continue;
+        }
+        let cmd = process.cmd();
+        if cmd.is_empty() || !cmd[0].to_lowercase().contains(&process_name) {
+            continue;
+        }
+        let is_empty_uni = cmd.len() == 2 && crate::common::is_empty_uni_link(&cmd[1]);
+        if !(cmd.len() == 1 || is_empty_uni) {
+            continue;
+        }
+        if process_has_visible_window(pid) {
+            continue;
+        }
+        log::info!(
+            "Terminating stale hidden main window process before launch: {:?}, pid={}",
+            cmd,
+            pid
+        );
+        if let Err(err) = nt_terminate_process(pid) {
+            log::warn!("Failed to terminate stale process {}: {}", pid, err);
+        }
+    }
+    Ok(())
+}
+
+fn process_has_visible_window(pid: u32) -> bool {
+    struct Search {
+        pid: u32,
+        found: bool,
+    }
+    unsafe extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam as *mut Search);
+        if IsWindowVisible(hwnd) == 0 {
+            return 1;
+        }
+        let mut window_pid = 0;
+        GetWindowThreadProcessId(hwnd, &mut window_pid);
+        if window_pid == search.pid {
+            search.found = true;
+            return 0;
+        }
+        1
+    }
+    let mut search = Search { pid, found: false };
+    unsafe {
+        EnumWindows(Some(enum_window), &mut search as *mut Search as LPARAM);
+    }
+    search.found
+}
+
 fn nt_terminate_process(process_id: DWORD) -> ResultType<()> {
     type NtTerminateProcess = unsafe extern "system" fn(HANDLE, DWORD) -> DWORD;
     unsafe {
