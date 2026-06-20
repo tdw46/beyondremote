@@ -282,7 +282,7 @@ class _ConnectionPageState extends State<ConnectionPage>
     super.onWindowClose();
     await bind.mainOnMainWindowClose();
     await windowManager.setPreventClose(false);
-    await windowManager.close();
+    unawaited(windowManager.close());
     exit(0);
   }
 

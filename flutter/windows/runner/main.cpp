@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cwctype>
 #include <iostream>
 
 #include "win32_desktop.h"
@@ -19,9 +20,107 @@ const std::vector<std::string> parameters_white_list = {"--install", "--cm"};
 
 const wchar_t* getWindowClassName();
 
+std::wstring GetCurrentExePath() {
+  wchar_t exe_path[MAX_PATH] = {0};
+  DWORD copied = ::GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
+  if (copied == 0 || copied >= MAX_PATH) {
+    return L"";
+  }
+  return std::wstring(exe_path);
+}
+
+std::wstring ToLower(std::wstring value) {
+  std::transform(value.begin(), value.end(), value.begin(),
+                 [](wchar_t ch) { return static_cast<wchar_t>(std::towlower(ch)); });
+  return value;
+}
+
+bool SamePath(const std::wstring& left, const std::wstring& right) {
+  return !left.empty() && !right.empty() && ToLower(left) == ToLower(right);
+}
+
+bool AllowsMultipleInstances(const std::vector<std::string>& arguments) {
+  for (const auto& whitelist_param : parameters_white_list) {
+    if (std::find(arguments.begin(), arguments.end(), whitelist_param) !=
+        arguments.end()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+struct ExistingWindowSearch {
+  DWORD current_pid = 0;
+  std::wstring current_exe_path;
+  HWND window = nullptr;
+};
+
+BOOL CALLBACK FindExistingAppWindowProc(HWND hwnd, LPARAM lparam) {
+  auto* search = reinterpret_cast<ExistingWindowSearch*>(lparam);
+  if (!::IsWindowVisible(hwnd)) {
+    return TRUE;
+  }
+
+  DWORD pid = 0;
+  ::GetWindowThreadProcessId(hwnd, &pid);
+  if (pid == 0 || pid == search->current_pid) {
+    return TRUE;
+  }
+
+  HANDLE process = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (process == nullptr) {
+    return TRUE;
+  }
+
+  wchar_t process_path[MAX_PATH] = {0};
+  DWORD process_path_len = MAX_PATH;
+  bool same_exe = ::QueryFullProcessImageNameW(process, 0, process_path,
+                                               &process_path_len) &&
+                  SamePath(search->current_exe_path, std::wstring(process_path));
+  ::CloseHandle(process);
+
+  if (!same_exe) {
+    return TRUE;
+  }
+
+  search->window = hwnd;
+  return FALSE;
+}
+
+HWND FindExistingAppWindow() {
+  ExistingWindowSearch search;
+  search.current_pid = ::GetCurrentProcessId();
+  search.current_exe_path = GetCurrentExePath();
+  if (search.current_exe_path.empty()) {
+    return nullptr;
+  }
+  ::EnumWindows(FindExistingAppWindowProc, reinterpret_cast<LPARAM>(&search));
+  return search.window;
+}
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command)
 {
+  std::vector<std::string> command_line_arguments =
+      GetCommandLineArguments();
+  // Remove possible trailing whitespace from command line arguments
+  for (auto& argument : command_line_arguments) {
+    argument.erase(argument.find_last_not_of(" \n\r\t") + 1);
+  }
+
+  if (!AllowsMultipleInstances(command_line_arguments)) {
+    HWND existing_hwnd = FindExistingAppWindow();
+    if (existing_hwnd != NULL) {
+      if (!command_line_arguments.empty()) {
+        DispatchToUniLinksDesktop(existing_hwnd);
+      } else {
+        ::ShowWindow(existing_hwnd, SW_NORMAL);
+        ::SetForegroundWindow(existing_hwnd);
+      }
+      return EXIT_SUCCESS;
+    }
+  }
+
   HINSTANCE hInstance = LoadLibraryA("librustdesk.dll");
   if (!hInstance)
   {
@@ -42,13 +141,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     std::cout << "Failed to get free_c_args." << std::endl;
     return EXIT_FAILURE;
   }
-  std::vector<std::string> command_line_arguments =
-      GetCommandLineArguments();
-  // Remove possible trailing whitespace from command line arguments
-  for (auto& argument : command_line_arguments) {
-    argument.erase(argument.find_last_not_of(" \n\r\t"));
-  }
-
   int args_len = 0;
   char** c_args = rustdesk_core_main(&args_len);
   if (!c_args)
@@ -77,15 +169,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (hwnd != NULL) {
     // Allow multiple flutter instances when being executed by parameters
     // contained in whitelists.
-    bool allow_multiple_instances = false;
-    for (auto& whitelist_param : parameters_white_list) {
-      allow_multiple_instances =
-          allow_multiple_instances ||
-          std::find(command_line_arguments.begin(),
-                    command_line_arguments.end(),
-                    whitelist_param) != command_line_arguments.end();
-    }
-    if (!allow_multiple_instances) {
+    if (!AllowsMultipleInstances(command_line_arguments)) {
       if (!command_line_arguments.empty()) {
         // Dispatch command line arguments
         DispatchToUniLinksDesktop(hwnd);
@@ -95,7 +179,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
         ::ShowWindow(hwnd, SW_NORMAL);
         ::SetForegroundWindow(hwnd);
       }
-      return EXIT_FAILURE;
+      return EXIT_SUCCESS;
     }
   }
 

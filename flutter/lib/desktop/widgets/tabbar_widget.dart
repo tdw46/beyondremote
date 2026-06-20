@@ -436,7 +436,7 @@ class _DesktopTabState extends State<DesktopTab>
     mainWindowClose() async {
       await bind.mainOnMainWindowClose();
       await windowManager.setPreventClose(false);
-      await windowManager.close();
+      unawaited(windowManager.close());
       exit(0);
     }
     notMainWindowClose(WindowController windowController) async {

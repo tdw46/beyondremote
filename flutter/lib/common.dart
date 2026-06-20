@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:back_button_interceptor/back_button_interceptor.dart';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -2834,7 +2835,10 @@ Future<void> onActiveWindowChanged() async {
       debugPrint("Start closing RustDesk...");
       await bind.mainOnMainWindowClose();
       await windowManager.setPreventClose(false);
-      await windowManager.close();
+      unawaited(windowManager.close());
+      if (!isMacOS) {
+        exit(0);
+      }
       if (isMacOS) {
         // If we call without delay, `flutter/macos/Runner/MainFlutterWindow.swift` can handle the "terminate" event.
         // But the app will not close.
