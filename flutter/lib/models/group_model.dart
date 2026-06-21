@@ -41,7 +41,7 @@ class GroupModel {
     if (!gFFI.userModel.isLogin || groupLoading.value) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
     if (!force && initialized) return;
-    if (!_hasConfiguredApiServer()) {
+    if (!await _hasConfiguredApiServer()) {
       groupLoadError.value = '';
       deviceGroups.clear();
       users.clear();
@@ -387,6 +387,6 @@ class GroupModel {
   }
 }
 
-bool _hasConfiguredApiServer() {
-  return bind.mainGetOptionSync(key: 'api-server').trim().isNotEmpty;
+Future<bool> _hasConfiguredApiServer() async {
+  return (await bind.mainGetApiServer()).trim().isNotEmpty;
 }

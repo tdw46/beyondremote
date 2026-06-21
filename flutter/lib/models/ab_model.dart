@@ -122,7 +122,7 @@ class AbModel {
     if (bind.isDisableAb()) return;
     if (!gFFI.userModel.isLogin) return;
     if (gFFI.userModel.networkError.isNotEmpty) return;
-    if (!_hasConfiguredApiServer()) {
+    if (!await _hasConfiguredApiServer()) {
       clearPullErrors();
       return;
     }
@@ -2025,6 +2025,6 @@ void _setEmptyBody(Map<String, String> headers) {
   headers['Content-Length'] = '0';
 }
 
-bool _hasConfiguredApiServer() {
-  return bind.mainGetOptionSync(key: 'api-server').trim().isNotEmpty;
+Future<bool> _hasConfiguredApiServer() async {
+  return (await bind.mainGetApiServer()).trim().isNotEmpty;
 }
