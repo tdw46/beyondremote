@@ -2356,14 +2356,21 @@ impl Connection {
     }
 
     fn take_account_access_token_from_avatar(lr: &mut LoginRequest) -> String {
-        let Some(rest) = lr.avatar.strip_prefix(BR_ACCOUNT_TOKEN_AVATAR_PREFIX) else {
+        let Some(rest) = lr
+            .avatar
+            .strip_prefix(BR_ACCOUNT_TOKEN_AVATAR_PREFIX)
+            .map(str::to_owned)
+        else {
             return String::new();
         };
-        let Some((token, avatar)) = rest.split_once(':') else {
+        let Some((token, avatar)) = rest
+            .split_once(':')
+            .map(|(token, avatar)| (token.to_owned(), avatar.to_owned()))
+        else {
             return String::new();
         };
-        lr.avatar = avatar.to_owned();
-        token.to_owned()
+        lr.avatar = avatar;
+        token
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
