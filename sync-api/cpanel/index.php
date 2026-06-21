@@ -40,6 +40,9 @@ function route(string $method, string $path): void
             'providers' => enabled_provider_names(),
         ]);
     }
+    if ($method === 'POST' && $path === '/api/beyondremote/device-auth') {
+        device_auth();
+    }
 
     if ($method === 'GET' && $path === '/api/login-options') {
         send_json(array_map(function ($op) {
@@ -643,6 +646,15 @@ function require_user(): array
     if ($token === '') {
         throw new HttpError('Unauthorized', 401);
     }
+    return require_user_by_token($token);
+}
+
+function require_user_by_token(string $token): array
+{
+    $token = trim($token);
+    if ($token === '') {
+        throw new HttpError('Unauthorized', 401);
+    }
     $stmt = db()->prepare('
         SELECT u.*
         FROM br_sessions s
@@ -657,6 +669,33 @@ function require_user(): array
     $touch = db()->prepare('UPDATE br_sessions SET last_seen_at = NOW() WHERE token_hash = ?');
     $touch->execute([hash_token($token)]);
     return $user;
+}
+
+function device_auth(): void
+{
+    $caller = require_user();
+    $body = json_body();
+    $targetToken = (string)($body['target_access_token'] ?? '');
+    $sourceId = normalize_remote_id((string)($body['source_id'] ?? ''));
+    $targetId = normalize_remote_id((string)($body['target_id'] ?? ''));
+    if ($targetToken === '' || $sourceId === '' || $targetId === '') {
+        throw new HttpError('Missing device auth fields', 400);
+    }
+    $target = require_user_by_token($targetToken);
+    if ((int)$caller['id'] !== (int)$target['id']) {
+        throw new HttpError('Forbidden', 403);
+    }
+    if (!registered_device_exists((int)$caller['id'], $sourceId)) {
+        throw new HttpError('Source device is not registered to this account', 403);
+    }
+    if (!registered_device_exists((int)$caller['id'], $targetId)) {
+        throw new HttpError('Target device is not registered to this account', 403);
+    }
+    send_json([
+        'ok' => true,
+        'source_id' => $sourceId,
+        'target_id' => $targetId,
+    ]);
 }
 
 function bearer_token(): string
@@ -785,7 +824,7 @@ function register_device_from_body(int $userId, array $body): void
 
 function register_device(int $userId, string $remoteId, string $uuid, array $deviceInfo): void
 {
-    $remoteId = trim($remoteId);
+    $remoteId = normalize_remote_id($remoteId);
     if ($remoteId === '') {
         return;
     }
@@ -809,6 +848,23 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     ];
     upsert_peer($userId, $peer, true);
     ensure_tag($userId, 'My devices', tag_color('My devices'));
+}
+
+function registered_device_exists(int $userId, string $remoteId): bool
+{
+    $stmt = db()->prepare('SELECT 1 FROM br_devices WHERE user_id = ? AND remote_id = ? LIMIT 1');
+    $stmt->execute([$userId, normalize_remote_id($remoteId)]);
+    return (bool)$stmt->fetchColumn();
+}
+
+function normalize_remote_id(string $remoteId): string
+{
+    $remoteId = trim($remoteId);
+    $at = strpos($remoteId, '@');
+    if ($at !== false) {
+        $remoteId = substr($remoteId, 0, $at);
+    }
+    return trim($remoteId);
 }
 
 function upsert_peer(int $userId, array $peer, bool $merge): void

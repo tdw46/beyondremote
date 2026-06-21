@@ -27,6 +27,8 @@ use std::{
 };
 use uuid::Uuid;
 
+const BR_ACCOUNT_TOKEN_AVATAR_PREFIX: &str = "br-account-token-v1:";
+
 use crate::{
     check_port,
     common::input::{MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT, MOUSE_TYPE_DOWN, MOUSE_TYPE_UP},
@@ -2715,6 +2717,13 @@ impl LoginConfigHandler {
         } else {
             Bytes::new()
         };
+        let account_access_token = LocalConfig::get_option("access_token");
+        if !account_access_token.is_empty() {
+            avatar = format!(
+                "{}{}:{}",
+                BR_ACCOUNT_TOKEN_AVATAR_PREFIX, account_access_token, avatar
+            );
+        }
         let mut lr = LoginRequest {
             username: pure_id,
             password: password.into(),

@@ -32,7 +32,7 @@ use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::{
     config::{
         self, decode_permanent_password_h1_from_storage, decode_preset_password_h1_from_storage,
-        keys, local_permanent_password_storage_is_usable_for_auth,
+        keys, local_permanent_password_storage_is_usable_for_auth, LocalConfig,
         preset_permanent_password_storage_is_usable_for_auth, Config, TrustedDevice,
     },
     fs::{self, can_enable_overwrite_detection, JobType},
@@ -72,6 +72,8 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE};
 #[cfg(windows)]
 use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
+
+const BR_ACCOUNT_TOKEN_AVATAR_PREFIX: &str = "br-account-token-v1:";
 
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
@@ -357,6 +359,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     terminal_user_token: Option<TerminalUserToken>,
     terminal_generic_service: Option<Box<GenericService>>,
+    account_access_token: String,
 }
 
 impl ConnInner {
@@ -536,6 +539,7 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             terminal_user_token: None,
             terminal_generic_service: None,
+            account_access_token: Default::default(),
         };
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
@@ -2218,6 +2222,22 @@ impl Connection {
         false
     }
 
+    async fn validate_same_account_device(&self) -> bool {
+        let target_access_token = LocalConfig::get_option("access_token");
+        if target_access_token.trim().is_empty() || self.account_access_token.trim().is_empty() {
+            return false;
+        }
+        let target_id = Config::get_id();
+        let source_id = self.lr.my_id.split('@').next().unwrap_or(&self.lr.my_id);
+        crate::hbbs_http::account::verify_same_account_device(
+            &self.account_access_token,
+            &target_access_token,
+            source_id,
+            &target_id,
+        )
+        .await
+    }
+
     fn is_recent_session(&mut self, tfa: bool) -> bool {
         SESSIONS
             .lock()
@@ -2314,6 +2334,7 @@ impl Connection {
 
     async fn handle_login_request_without_validation(&mut self, lr: &LoginRequest) {
         self.lr = lr.clone();
+        self.account_access_token = Self::take_account_access_token_from_avatar(&mut self.lr);
         self.peer_argb = crate::str2color(&format!("{}{}", &lr.my_id, &lr.my_platform), 0xff);
         if let Some(o) = lr.option.as_ref() {
             self.options_in_login = Some(o.clone());
@@ -2332,6 +2353,17 @@ impl Connection {
             }
         }
         self.video_ack_required = lr.video_ack_required;
+    }
+
+    fn take_account_access_token_from_avatar(lr: &mut LoginRequest) -> String {
+        let Some(rest) = lr.avatar.strip_prefix(BR_ACCOUNT_TOKEN_AVATAR_PREFIX) else {
+            return String::new();
+        };
+        let Some((token, avatar)) = rest.split_once(':') else {
+            return String::new();
+        };
+        lr.avatar = avatar.to_owned();
+        token.to_owned()
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2529,6 +2561,20 @@ impl Connection {
             let allow_logon_screen_password =
                 crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon();
+
+            if err_msg.is_empty() && self.validate_same_account_device().await {
+                log::info!(
+                    "Authorized same-account device connection from {}",
+                    self.lr.my_id
+                );
+                #[cfg(target_os = "linux")]
+                self.linux_headless_handle.wait_desktop_cm_ready().await;
+                if !self.send_logon_response_and_keep_alive().await {
+                    return false;
+                }
+                self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
+                return true;
+            }
 
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
                 || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()

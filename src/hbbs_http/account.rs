@@ -1,7 +1,11 @@
 use super::HbbHttpResponse;
-use crate::hbbs_http::create_http_client_with_url;
-use hbb_common::{config::LocalConfig, log, ResultType};
+use crate::hbbs_http::{create_http_client_async_with_url, create_http_client_with_url};
+use hbb_common::{
+    config::{Config, LocalConfig},
+    log, ResultType,
+};
 use serde_derive::{Deserialize, Serialize};
+use serde_json::json;
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{
     collections::HashMap,
@@ -125,6 +129,60 @@ pub struct AuthResult {
     pub failed_msg: String,
     pub url: Option<String>,
     pub auth_body: Option<AuthBody>,
+}
+
+pub async fn verify_same_account_device(
+    caller_access_token: &str,
+    target_access_token: &str,
+    source_id: &str,
+    target_id: &str,
+) -> bool {
+    let caller_access_token = caller_access_token.trim();
+    let target_access_token = target_access_token.trim();
+    let source_id = source_id.trim();
+    let target_id = target_id.trim();
+    if caller_access_token.is_empty()
+        || target_access_token.is_empty()
+        || source_id.is_empty()
+        || target_id.is_empty()
+    {
+        return false;
+    }
+
+    let api_server = crate::common::get_api_server(
+        Config::get_option("api-server"),
+        Config::get_option("custom-rendezvous-server"),
+    );
+    if api_server.trim().is_empty() {
+        return false;
+    }
+
+    let url = format!("{}/api/beyondremote/device-auth", api_server.trim_end_matches('/'));
+    let client = create_http_client_async_with_url(&url).await;
+    let resp = client
+        .post(&url)
+        .bearer_auth(caller_access_token)
+        .json(&json!({
+            "source_id": source_id,
+            "target_id": target_id,
+            "target_access_token": target_access_token,
+        }))
+        .send()
+        .await;
+    let Ok(resp) = resp else {
+        log::warn!("Same-account device auth request failed for {} -> {}", source_id, target_id);
+        return false;
+    };
+    if !resp.status().is_success() {
+        log::info!(
+            "Same-account device auth denied for {} -> {}: HTTP {}",
+            source_id,
+            target_id,
+            resp.status()
+        );
+        return false;
+    }
+    true
 }
 
 impl Default for UserStatus {
