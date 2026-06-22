@@ -652,7 +652,7 @@ class AbModel {
       if (currentAbLoading.value) return;
       final data = jsonDecode(cache);
       if (data == null || data['access_token'] != access_token) return;
-      _deserializeCache(data);
+      _deserializeCache(data, await bind.mainGetMyId());
       legacyMode.value = addressbooks.containsKey(_legacyAddressBookName);
       trySetCurrentToLast();
     } catch (e) {
@@ -660,7 +660,7 @@ class AbModel {
     }
   }
 
-  _deserializeCache(dynamic data) {
+  _deserializeCache(dynamic data, String localId) {
     if (data == null) return;
     reset();
     final abEntries = data['ab_entries'];
@@ -687,7 +687,10 @@ class AbModel {
           }
           if (abEntry['peers'] is List) {
             for (var peer in abEntry['peers']) {
-              ab.peers.add(Peer.fromJson(peer));
+              final p = Peer.fromJson(peer);
+              if (!_isSelfPeer(p, localId)) {
+                ab.peers.add(p);
+              }
             }
           }
           if (abEntry['tag_colors'] is String) {
@@ -1030,7 +1033,7 @@ class LegacyAb extends BaseAb {
         } else if (json.containsKey('data')) {
           final data = jsonDecode(json['data']);
           if (data != null) {
-            _deserialize(data);
+            _deserialize(data, localId: await bind.mainGetMyId());
           }
           ret = true;
         }
@@ -1097,7 +1100,11 @@ class LegacyAb extends BaseAb {
   @override
   Future<String?> addPeers(List<Map<String, dynamic>> ps) async {
     bool full = false;
+    final localId = await bind.mainGetMyId();
     for (var p in ps) {
+      if (p['id'] == localId) {
+        continue;
+      }
       if (!isFull()) {
         p.remove('password'); // legacy ab ignore password
         final index = peers.indexWhere((e) => e.id == p['id']);
@@ -1320,7 +1327,7 @@ class LegacyAb extends BaseAb {
     };
   }
 
-  _deserialize(dynamic data) {
+  _deserialize(dynamic data, {String localId = ''}) {
     if (data == null) return;
     final oldOnlineIDs = peers.where((e) => e.online).map((e) => e.id).toList();
     tags.clear();
@@ -1331,7 +1338,10 @@ class LegacyAb extends BaseAb {
     }
     if (data['peers'] is List) {
       for (final peer in data['peers']) {
-        peers.add(Peer.fromJson(peer));
+        final p = Peer.fromJson(peer);
+        if (!_isSelfPeer(p, localId)) {
+          peers.add(p);
+        }
       }
     }
     // restore online
@@ -1428,6 +1438,7 @@ class Ab extends BaseAb {
     final api = "${await bind.mainGetApiServer()}/api/ab/peers";
     int? statusCode;
     try {
+      final localId = await bind.mainGetMyId();
       var uri0 = Uri.parse(api);
       final pageSize = 100;
       var total = 0;
@@ -1464,6 +1475,9 @@ class Ab extends BaseAb {
             if (data is List) {
               for (final profile in data) {
                 final u = Peer.fromJson(profile);
+                if (_isSelfPeer(u, localId)) {
+                  continue;
+                }
                 int index = tmpPeers.indexWhere((e) => e.id == u.id);
                 if (index < 0) {
                   tmpPeers.add(u);
@@ -1966,6 +1980,10 @@ class DummyAb extends BaseAb {
 
   @override
   Future<void> syncFromRecent(List<Peer> recents) async {}
+}
+
+bool _isSelfPeer(Peer peer, String localId) {
+  return localId.isNotEmpty && peer.id == localId;
 }
 
 Map<String, dynamic> _jsonDecodeRespMap(String body, int statusCode) {

@@ -267,6 +267,14 @@ fn apply_client_config() {
     }
 }
 
+pub(crate) fn relay_server_for_peer_advertisement(configured_relay: &str) -> Option<String> {
+    let host = public_host();
+    if host.is_empty() || !is_local_server(configured_relay) {
+        return None;
+    }
+    Some(relay_server())
+}
+
 fn account_api_server() -> String {
     let configured = Config::get_option("api-server").trim().to_owned();
     if configured.is_empty() {
@@ -572,6 +580,13 @@ fn has_explicit_port(host: &str) -> bool {
     host.rsplit_once(':')
         .and_then(|(_, port)| port.parse::<u16>().ok())
         .is_some()
+}
+
+fn is_local_server(value: &str) -> bool {
+    let Some((host, _)) = value.trim().rsplit_once(':') else {
+        return false;
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]" | "::1")
 }
 
 fn data_root() -> PathBuf {

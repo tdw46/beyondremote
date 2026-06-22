@@ -233,6 +233,7 @@ class GroupModel {
   Future<bool> _getPeers(List<Peer> tmpPeers) async {
     try {
       final api = "${await bind.mainGetApiServer()}/api/peers";
+      final localId = await bind.mainGetMyId();
       var uri0 = Uri.parse(api);
       final pageSize = 100;
       var total = 0;
@@ -270,6 +271,9 @@ class GroupModel {
               for (final p in data) {
                 final peerPayload = PeerPayload.fromJson(p);
                 final peer = PeerPayload.toPeer(peerPayload);
+                if (_isSelfPeer(peer, localId)) {
+                  continue;
+                }
                 int index = tmpPeers.indexWhere((e) => e.id == peer.id);
                 if (index < 0) {
                   tmpPeers.add(peer);
@@ -341,8 +345,12 @@ class GroupModel {
         }
       }
       if (data['peers'] is List) {
+        final localId = await bind.mainGetMyId();
         for (final peer in data['peers']) {
-          peers.add(Peer.fromJson(peer));
+          final p = Peer.fromJson(peer);
+          if (!_isSelfPeer(p, localId)) {
+            peers.add(p);
+          }
         }
         _callbackPeerUpdate();
       }
@@ -389,4 +397,8 @@ class GroupModel {
 
 Future<bool> _hasConfiguredApiServer() async {
   return (await bind.mainGetApiServer()).trim().isNotEmpty;
+}
+
+bool _isSelfPeer(Peer peer, String localId) {
+  return localId.isNotEmpty && peer.id == localId;
 }

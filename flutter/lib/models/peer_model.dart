@@ -2,8 +2,29 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'platform_model.dart';
+import '../consts.dart';
 // ignore: depend_on_referenced_packages
 import 'package:collection/collection.dart';
+
+String normalizePeerPlatform(dynamic value) {
+  final platform = value?.toString().trim() ?? '';
+  switch (platform.toLowerCase()) {
+    case 'windows':
+    case 'win':
+      return kPeerPlatformWindows;
+    case 'linux':
+      return kPeerPlatformLinux;
+    case 'macos':
+    case 'mac os':
+    case 'darwin':
+    case 'osx':
+      return kPeerPlatformMacOS;
+    case 'android':
+      return kPeerPlatformAndroid;
+    default:
+      return platform;
+  }
+}
 
 class Peer {
   final String id;
@@ -36,7 +57,7 @@ class Peer {
         password = json['password'] ?? '',
         username = json['username'] ?? '',
         hostname = json['hostname'] ?? '',
-        platform = json['platform'] ?? '',
+        platform = normalizePeerPlatform(json['platform']),
         alias = json['alias'] ?? '',
         tags = json['tags'] ?? [],
         forceAlwaysRelay = json['forceAlwaysRelay'] == 'true',

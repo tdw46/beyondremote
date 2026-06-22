@@ -1990,7 +1990,16 @@ jobs:
           sudo apt-get install -y libarchive-tools libfuse2
           # set-up appimage-builder
           # https://github.com/AppImage/AppImageKit/issues/1395
-          sudo pip3 install git+https://github.com/rustdesk-org/appimage-builder.git
+          rm -rf /tmp/appimage-builder
+          git clone --depth 1 https://github.com/rustdesk-org/appimage-builder.git /tmp/appimage-builder
+          python3 - <<'PY'
+          from pathlib import Path
+          setup_py = Path("/tmp/appimage-builder/setup.py")
+          text = setup_py.read_text()
+          setup_py.write_text(text.replace('setup_requires=["setuptools_scm"]', 'setup_requires=["setuptools_scm<8"]'))
+          PY
+          sudo pip3 install "setuptools<70" "setuptools_scm<8" wheel
+          sudo pip3 install /tmp/appimage-builder
           # run appimage-builder
           pushd appimage
           sudo appimage-builder --skip-tests --recipe ./AppImageBuilder-${{ matrix.job.arch }}.yml
