@@ -176,7 +176,7 @@ fn status() -> ManagedStatus {
         if public_host().is_empty() {
             "Self-hosted server is running for this computer. Add a public DNS name or IP to connect from other networks.".to_owned()
         } else {
-            "Self-hosted server is running and this client is configured to use its public address."
+            "Self-hosted server is running. Other devices use the public address; this computer connects locally to avoid router hairpin resets."
                 .to_owned()
         }
     } else {
@@ -253,8 +253,8 @@ fn start() -> ResultType<()> {
 }
 
 fn apply_client_config() {
-    Config::set_option("custom-rendezvous-server".to_owned(), id_server());
-    Config::set_option("relay-server".to_owned(), relay_server());
+    Config::set_option("custom-rendezvous-server".to_owned(), local_id_server());
+    Config::set_option("relay-server".to_owned(), local_relay_server());
     let configured_api = Config::get_option("api-server");
     if should_reset_account_api(&configured_api) {
         Config::set_option(
@@ -516,6 +516,14 @@ fn id_server() -> String {
 
 fn relay_server() -> String {
     host_with_port(&server_host(), hbb_common::config::RELAY_PORT)
+}
+
+fn local_id_server() -> String {
+    host_with_port(LOCAL_HOST, hbb_common::config::RENDEZVOUS_PORT)
+}
+
+fn local_relay_server() -> String {
+    host_with_port(LOCAL_HOST, hbb_common::config::RELAY_PORT)
 }
 
 fn normalize_public_host(value: &str) -> String {

@@ -641,9 +641,16 @@ impl Connection {
                         }
                         ipc::Data::CmErr(e) => {
                             if e != "expected" {
-                                // cm closed before connection
-                                conn.on_close(&format!("connection manager error: {}", e), false).await;
-                                break;
+                                if conn.authorized {
+                                    log::warn!(
+                                        "Connection manager error after authorization; keeping session alive: {}",
+                                        e
+                                    );
+                                } else {
+                                    // cm closed before connection
+                                    conn.on_close(&format!("connection manager error: {}", e), false).await;
+                                    break;
+                                }
                             }
                         }
                         ipc::Data::ChatMessage{text} => {
@@ -2380,6 +2387,7 @@ impl Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn try_start_cm_ipc(&mut self) {
         if let Some(p) = self.start_cm_ipc_para.take() {
+            let has_account_auth = !self.account_access_token.trim().is_empty();
             tokio::spawn(async move {
                 #[cfg(windows)]
                 let tx_from_cm_clone = p.tx_from_cm.clone();
@@ -2396,6 +2404,7 @@ impl Connection {
                     #[cfg(windows)]
                     if !crate::platform::is_prelogin()
                         && !err.to_string().contains(crate::platform::EXPLORER_EXE)
+                        && !has_account_auth
                         && !crate::hbbs_http::sync::has_server_api()
                     {
                         allow_err!(tx_from_cm_clone.send(Data::CmErr(err.to_string())));
