@@ -52,7 +52,7 @@ fn main() {
         .about("RustDesk command line tool")
         .args_from_usage(&args)
         .get_matches();
-    use hbb_common::{config::LocalConfig, env_logger::*};
+    use hbb_common::env_logger::*;
     init_from_env(Env::default().filter_or(DEFAULT_FILTER_ENV, "info"));
     if let Some(p) = matches.value_of("port-forward") {
         let options: Vec<String> = p.split(":").map(|x| x.to_owned()).collect();
@@ -81,7 +81,8 @@ fn main() {
         common::test_rendezvous_server();
         common::test_nat_type();
         let key = matches.value_of("key").unwrap_or("").to_owned();
-        let token = LocalConfig::get_option("access_token");
+        // Beyond Remote account tokens are not hbbs rendezvous tokens.
+        let token = String::new();
         cli::start_one_port_forward(
             options[0].clone(),
             port,
@@ -94,7 +95,8 @@ fn main() {
         common::test_rendezvous_server();
         common::test_nat_type();
         let key = matches.value_of("key").unwrap_or("").to_owned();
-        let token = LocalConfig::get_option("access_token");
+        // Beyond Remote account tokens are not hbbs rendezvous tokens.
+        let token = String::new();
         cli::connect_test(p, key, token);
     } else if let Some(p) = matches.value_of("server") {
         log::info!("id={}", hbb_common::config::Config::get_id());

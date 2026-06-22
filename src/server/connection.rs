@@ -74,6 +74,7 @@ use crate::virtual_display_manager;
 pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 
 const BR_ACCOUNT_TOKEN_AVATAR_PREFIX: &str = "br-account-token-v1:";
+const BR_ACCOUNT_ACCESS_TOKEN_OPTION: &str = "beyondremote-account-access-token";
 
 lazy_static::lazy_static! {
     static ref LOGIN_FAILURES: [Arc::<Mutex<HashMap<String, (i32, i32, i32)>>>; 2] = Default::default();
@@ -2223,7 +2224,10 @@ impl Connection {
     }
 
     async fn validate_same_account_device(&self) -> bool {
-        let target_access_token = LocalConfig::get_option("access_token");
+        let mut target_access_token = Config::get_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION);
+        if target_access_token.trim().is_empty() {
+            target_access_token = LocalConfig::get_option("access_token");
+        }
         if target_access_token.trim().is_empty() || self.account_access_token.trim().is_empty() {
             return false;
         }

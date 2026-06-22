@@ -30,6 +30,7 @@ use crate::hbbs_http::account;
 use crate::ipc;
 
 type Message = RendezvousMessage;
+const BR_ACCOUNT_ACCESS_TOKEN_OPTION: &str = "beyondremote-account-access-token";
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub type Children = Arc<Mutex<(bool, HashMap<(String, String), Child>)>>;
@@ -224,7 +225,11 @@ pub fn is_option_fixed(key: &str) -> bool {
 
 #[inline]
 pub fn get_local_option(key: String) -> String {
-    crate::get_local_option(&key)
+    let value = crate::get_local_option(&key);
+    if key == "access_token" && Config::get_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION) != value {
+        mirror_service_account_access_token(&value);
+    }
+    value
 }
 
 #[inline]
@@ -245,7 +250,17 @@ pub fn get_builtin_option(key: &str) -> String {
 
 #[inline]
 pub fn set_local_option(key: String, value: String) {
+    if key == "access_token" {
+        mirror_service_account_access_token(&value);
+    }
     LocalConfig::set_option(key.clone(), value);
+}
+
+fn mirror_service_account_access_token(value: &str) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    ipc::set_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION, value);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    Config::set_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION.to_owned(), value.to_owned());
 }
 
 /// Resolve relative avatar path (e.g. "/avatar/xxx") to absolute URL

@@ -24,6 +24,14 @@ const QUERY_TIMEOUT_SECS: u64 = 60 * 3;
 const REQUESTING_ACCOUNT_AUTH: &str = "Requesting account auth";
 const WAITING_ACCOUNT_AUTH: &str = "Waiting account auth";
 const LOGIN_ACCOUNT_AUTH: &str = "Login account auth";
+const BR_ACCOUNT_ACCESS_TOKEN_OPTION: &str = "beyondremote-account-access-token";
+
+fn set_service_account_access_token(token: &str) {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    crate::ipc::set_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION, token);
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    Config::set_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION.to_owned(), token.to_owned());
+}
 
 #[derive(Deserialize, Clone, Debug)]
 pub struct OidcAuthUrl {
@@ -341,6 +349,7 @@ impl OidcSession {
                                 "access_token".to_owned(),
                                 auth_body.access_token.clone(),
                             );
+                            set_service_account_access_token(&auth_body.access_token);
                             LocalConfig::set_option(
                                 "user_info".to_owned(),
                                 serde_json::json!({
