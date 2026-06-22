@@ -667,6 +667,26 @@ pub(crate) fn authorize_windows_main_ipc_connection(stream: &Connection, postfix
         peer_is_elevated,
     ) = stream.server_authorization_status();
     if !authorized {
+        let identity_unavailable =
+            peer_pid.is_some() && peer_is_system.is_none() && peer_is_elevated.is_none();
+        if identity_unavailable {
+            if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, postfix) {
+                log::warn!(
+                    "Rejected unauthorized connection on ipc channel with unavailable peer identity and executable mismatch: postfix={}, peer_pid={:?}, err={}",
+                    postfix,
+                    peer_pid,
+                    err
+                );
+                return false;
+            }
+            log::warn!(
+                "Accepted ipc connection with unavailable peer identity because executable verification matched: postfix={}, peer_pid={:?}, expected_session_id={:?}",
+                postfix,
+                peer_pid,
+                server_session_id
+            );
+            return true;
+        }
         log_rejected_windows_ipc_connection(
             postfix,
             peer_pid,
