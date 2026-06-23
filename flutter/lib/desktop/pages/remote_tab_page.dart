@@ -49,6 +49,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
   String? peerId;
   bool _isScreenRectSet = false;
   int? _display;
+  bool _closingPeerSessions = false;
 
   var connectionMap = RxList<Widget>.empty(growable: true);
 
@@ -390,13 +391,26 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
   }
 
   Future<bool> handleWindowCloseButton() async {
+    if (_closingPeerSessions) {
+      return true;
+    }
     final connLength = tabController.length;
     if (connLength == 1) {
+      final id = tabController.state.value.tabs[0].key;
       if (await desktopTryShowTabAuditDialogCloseCancelled(
-        id: tabController.state.value.tabs[0].key,
+        id: id,
         tabController: tabController,
       )) {
         return false;
+      }
+      try {
+        if (await DesktopMultiWindow.invokeMethod(
+                kMainWindowId, kWindowEventClosePeerSessions, id) ==
+            true) {
+          return false;
+        }
+      } catch (e) {
+        debugPrint('Failed to close peer sessions for $id: $e');
       }
     }
     if (connLength <= 1) {
@@ -414,6 +428,25 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         tabController.clear();
       }
       return res;
+    }
+  }
+
+  Future<void> _closePeerSessionLocally(String id) async {
+    if (_closingPeerSessions) {
+      return;
+    }
+    _closingPeerSessions = true;
+    try {
+      if (tabController.state.value.tabs.any((tab) => tab.key == id)) {
+        tabController.closeBy(id);
+      }
+      if (tabController.state.value.tabs.isEmpty) {
+        final controller = WindowController.fromWindowId(windowId());
+        await controller.setPreventClose(false);
+        await controller.close();
+      }
+    } finally {
+      _closingPeerSessions = false;
     }
   }
 
@@ -489,6 +522,12 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
         windowOnTop(windowId());
       }
       return jumpOk;
+    } else if (call.method == kWindowEventHasPeerSession) {
+      return tabController.state.value.tabs
+          .any((tab) => tab.key == call.arguments);
+    } else if (call.method == kWindowEventClosePeerSessions) {
+      await _closePeerSessionLocally(call.arguments);
+      return true;
     } else if (call.method == kWindowEventActiveDisplaySession) {
       final args = jsonDecode(call.arguments);
       final id = args['id'];

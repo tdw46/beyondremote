@@ -267,14 +267,6 @@ fn apply_client_config() {
     }
 }
 
-pub(crate) fn relay_server_for_peer_advertisement(configured_relay: &str) -> Option<String> {
-    let host = public_host();
-    if host.is_empty() || !is_local_server(configured_relay) {
-        return None;
-    }
-    Some(relay_server())
-}
-
 fn account_api_server() -> String {
     let configured = Config::get_option("api-server").trim().to_owned();
     if configured.is_empty() {

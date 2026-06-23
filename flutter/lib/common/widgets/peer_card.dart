@@ -10,10 +10,12 @@ import 'package:provider/provider.dart';
 
 import '../../common.dart';
 import '../../common/formatter/id_formatter.dart';
+import '../../models/ab_model.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 import '../../desktop/widgets/material_mod_popup_menu.dart' as mod_menu;
 import '../../desktop/widgets/popup_menu.dart';
+import '../../utils/multi_window_manager.dart';
 import 'dart:math' as math;
 
 typedef PopupMenuEntryBuilder = Future<List<mod_menu.PopupMenuEntry<String>>>
@@ -46,6 +48,8 @@ class _PeerCard extends StatefulWidget {
 /// State for the connection page.
 class _PeerCardState extends State<_PeerCard>
     with AutomaticKeepAliveClientMixin {
+  static final Map<String, DateTime> _lastConnectTimes = {};
+
   var _menuPos = RelativeRect.fill;
   final double _cardRadius = 16;
   final double _tileRadius = 5;
@@ -62,22 +66,35 @@ class _PeerCardState extends State<_PeerCard>
     final PeerTabModel peerTabModel = Provider.of(context);
     final peer = super.widget.peer;
     return GestureDetector(
-        onDoubleTap: peerTabModel.multiSelectionMode
-            ? null
-            : () => widget.connect(context, peer.id),
+        onDoubleTap: null,
         onTap: () {
           if (peerTabModel.multiSelectionMode) {
             peerTabModel.select(peer);
           } else {
-            if (isMobile) {
-              widget.connect(context, peer.id);
-            } else {
-              peerTabModel.select(peer);
-            }
+            _connectPeer(peer.id);
           }
         },
+        onSecondaryTapDown: peerTabModel.multiSelectionMode
+            ? null
+            : (e) {
+                final x = e.globalPosition.dx;
+                final y = e.globalPosition.dy;
+                _menuPos = RelativeRect.fromLTRB(x, y, x, y);
+                _showPeerMenu(peer.id);
+              },
         onLongPress: () => peerTabModel.select(peer),
         child: child);
+  }
+
+  void _connectPeer(String id) {
+    final now = DateTime.now();
+    final lastConnect = _lastConnectTimes[id];
+    if (lastConnect != null &&
+        now.difference(lastConnect) < const Duration(milliseconds: 1200)) {
+      return;
+    }
+    _lastConnectTimes[id] = now;
+    super.widget.connect(context, id);
   }
 
   Widget _buildPortrait() {
@@ -584,6 +601,32 @@ abstract class BasePeerCard extends StatelessWidget {
   }
 
   @protected
+  Future<void> _addDisconnectActionIfActive(
+      List<MenuEntryBase<String>> menuItems) async {
+    if (!isDesktop) {
+      return;
+    }
+    if (await rustDeskWinManager.hasRemoteDesktopSession(peer.id)) {
+      menuItems.add(_disconnectAction());
+    }
+  }
+
+  @protected
+  MenuEntryBase<String> _disconnectAction() {
+    return MenuEntryButton<String>(
+      childBuilder: (TextStyle? style) => Text(
+        translate('Disconnect'),
+        style: style,
+      ),
+      proc: () {
+        rustDeskWinManager.closeRemoteDesktopPeerSessions(peer.id);
+      },
+      padding: menuPadding,
+      dismissOnClicked: true,
+    );
+  }
+
+  @protected
   MenuEntryBase<String> _transferFileAction(BuildContext context) {
     return _connectCommonAction(
       context,
@@ -765,20 +808,37 @@ abstract class BasePeerCard extends StatelessWidget {
             oldName: oldName,
             onSubmit: (String newName) async {
               if (newName != oldName) {
-                if (tab == PeerTabIndex.ab) {
-                  await gFFI.abModel.changeAlias(id: id, alias: newName);
-                  await bind.mainSetPeerAlias(id: id, alias: newName);
-                } else {
-                  await bind.mainSetPeerAlias(id: id, alias: newName);
-                  showToast(translate('Successful'));
-                  _update();
-                }
+                await _renamePeerEverywhere(id, newName);
               }
             });
       },
       padding: menuPadding,
       dismissOnClicked: true,
     );
+  }
+
+  Future<void> _renamePeerEverywhere(String id, String alias) async {
+    await bind.mainSetPeerAlias(id: id, alias: alias);
+    var synced = true;
+    if (gFFI.userModel.isLogin) {
+      if (!gFFI.abModel.listInitialized) {
+        await gFFI.abModel
+            .pullAb(force: ForcePullAb.listAndCurrent, quiet: true);
+      }
+      synced = await gFFI.abModel.changeAliasEverywhere(id: id, alias: alias);
+    }
+    await _refreshPeerLists();
+    showToast(translate(synced ? 'Successful' : 'Failed'));
+  }
+
+  Future<void> _refreshPeerLists() async {
+    await bind.mainLoadRecentPeers();
+    await bind.mainLoadFavPeers();
+    await bind.mainLoadLanPeers();
+    if (gFFI.userModel.isLogin) {
+      await gFFI.groupModel.pull();
+    }
+    _update();
   }
 
   @protected
@@ -972,6 +1032,7 @@ class RecentPeerCard extends BasePeerCard {
       _viewCameraAction(context),
       _terminalAction(context),
     ];
+    await _addDisconnectActionIfActive(menuItems);
 
     if (peer.platform == kPeerPlatformWindows) {
       menuItems.add(_terminalRunAsAdminAction(context));
@@ -1037,6 +1098,7 @@ class FavoritePeerCard extends BasePeerCard {
       _viewCameraAction(context),
       _terminalAction(context),
     ];
+    await _addDisconnectActionIfActive(menuItems);
 
     if (peer.platform == kPeerPlatformWindows) {
       menuItems.add(_terminalRunAsAdminAction(context));
@@ -1097,6 +1159,7 @@ class DiscoveredPeerCard extends BasePeerCard {
       _viewCameraAction(context),
       _terminalAction(context),
     ];
+    await _addDisconnectActionIfActive(menuItems);
 
     if (peer.platform == kPeerPlatformWindows) {
       menuItems.add(_terminalRunAsAdminAction(context));
@@ -1156,6 +1219,7 @@ class AddressBookPeerCard extends BasePeerCard {
       _viewCameraAction(context),
       _terminalAction(context),
     ];
+    await _addDisconnectActionIfActive(menuItems);
 
     if (peer.platform == kPeerPlatformWindows) {
       menuItems.add(_terminalRunAsAdminAction(context));
@@ -1313,6 +1377,7 @@ class MyGroupPeerCard extends BasePeerCard {
       _viewCameraAction(context),
       _terminalAction(context),
     ];
+    await _addDisconnectActionIfActive(menuItems);
 
     if (peer.platform == kPeerPlatformWindows) {
       menuItems.add(_terminalRunAsAdminAction(context));
@@ -1331,8 +1396,8 @@ class MyGroupPeerCard extends BasePeerCard {
     if (isWindows) {
       menuItems.add(_createShortCutAction(peer.id));
     }
-    // menuItems.add(MenuEntryDivider());
-    // menuItems.add(_renameAction(peer.id));
+    menuItems.add(MenuEntryDivider());
+    menuItems.add(_renameAction(peer.id));
     // if (await bind.mainPeerHasPassword(id: peer.id)) {
     //   menuItems.add(_unrememberPasswordAction(peer.id));
     // }

@@ -126,6 +126,7 @@ class FfiModel with ChangeNotifier {
   DateTime? _offlineReconnectStartTime;
   bool _viewOnly = false;
   bool _showMyCursor = false;
+  bool _openedAllDisplaysAsIndividualWindows = false;
   WeakReference<FFI> parent;
   late final SessionID sessionId;
 
@@ -1502,10 +1503,28 @@ class FfiModel with ChangeNotifier {
       return;
     }
 
+    final useIndividualWindows =
+        bind.sessionGetDisplaysAsIndividualWindows(sessionId: sessionId) == 'Y';
+    if (!useIndividualWindows) {
+      final ffi = parent.target;
+      if (ffi != null) {
+        openMonitorInTheSameTab(kAllDisplayValue, ffi, _pi);
+      }
+      return;
+    }
+
     final screenRectList = await getScreenRectList();
+    screenRectList.sort((a, b) {
+      final leftCompare = a.left.compareTo(b.left);
+      return leftCompare == 0 ? a.top.compareTo(b.top) : leftCompare;
+    });
     if (screenRectList.length <= 1) {
       return;
     }
+    if (_openedAllDisplaysAsIndividualWindows) {
+      return;
+    }
+    _openedAllDisplaysAsIndividualWindows = true;
 
     // to-do: peer currentDisplay is the primary display, but the primary display may not be the first display.
     // local primary display also may not be the first display.

@@ -624,6 +624,9 @@ function group_peers(): void
     $peers = [];
     foreach ($stmt->fetchAll() as $row) {
         $info = json_decode($row['device_info'], true) ?: [];
+        $peer = load_peer((int)$user['id'], (string)$row['remote_id']) ?: [];
+        $alias = trim((string)($peer['alias'] ?? ''));
+        $deviceName = $alias !== '' ? $alias : (string)($info['name'] ?? '');
         $peers[] = [
             'id' => $row['remote_id'],
             'status' => 1,
@@ -633,7 +636,7 @@ function group_peers(): void
             'info' => [
                 'username' => '',
                 'os' => (string)($info['os'] ?? ''),
-                'device_name' => (string)($info['name'] ?? ''),
+                'device_name' => $deviceName,
             ],
         ];
     }
@@ -828,6 +831,9 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     if ($remoteId === '') {
         return;
     }
+    $existingPeer = load_peer($userId, $remoteId);
+    $existingAlias = trim((string)($existingPeer['alias'] ?? ''));
+    $deviceName = (string)($deviceInfo['name'] ?? '');
     $stmt = db()->prepare('
         INSERT INTO br_devices (user_id, remote_id, uuid, device_info, last_seen_at)
         VALUES (?, ?, ?, ?::jsonb, NOW())
@@ -839,9 +845,9 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     $peer = [
         'id' => $remoteId,
         'username' => '',
-        'hostname' => (string)($deviceInfo['name'] ?? ''),
+        'hostname' => $deviceName,
         'platform' => map_platform((string)($deviceInfo['os'] ?? '')),
-        'alias' => (string)($deviceInfo['name'] ?? ''),
+        'alias' => $existingAlias !== '' ? $existingAlias : $deviceName,
         'tags' => ['My devices'],
         'note' => 'Signed in with Beyond Remote',
         'same_server' => true,

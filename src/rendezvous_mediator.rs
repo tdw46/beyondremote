@@ -13,7 +13,8 @@ use hbb_common::{
     allow_err,
     anyhow::{self, bail},
     config::{
-        self, keys::*, option2bool, use_ws, Config, CONNECT_TIMEOUT, REG_INTERVAL, RENDEZVOUS_PORT,
+        self, keys::*, option2bool, use_ws, Config, CONNECT_TIMEOUT, REG_INTERVAL, RELAY_PORT,
+        RENDEZVOUS_PORT,
     },
     futures::future::join_all,
     log,
@@ -48,6 +49,45 @@ static NOTIFIED_NEEDS_DEPLOY: AtomicBool = AtomicBool::new(false);
 const DEPLOY_RETRY_INTERVAL: i64 = 30_000;
 lazy_static::lazy_static! {
     static ref LAST_NOT_DEPLOYED_REGISTER: Mutex<Option<Instant>> = Mutex::new(None);
+}
+
+fn relay_server_for_peer_advertisement(configured_relay: &str) -> Option<String> {
+    let public_host =
+        normalize_managed_public_host(&Config::get_option("managed-server-public-host"));
+    if public_host.is_empty() || !is_local_relay_server(configured_relay) {
+        return None;
+    }
+    Some(host_with_port(&public_host, RELAY_PORT))
+}
+
+fn is_local_relay_server(value: &str) -> bool {
+    let value = value.trim();
+    let host = if value.starts_with("[::1]") {
+        "::1"
+    } else if value.starts_with("::1") {
+        "::1"
+    } else {
+        value.split(':').next().unwrap_or_default()
+    };
+    matches!(host, "127.0.0.1" | "localhost" | "::1")
+}
+
+fn normalize_managed_public_host(value: &str) -> String {
+    let mut host = value.trim();
+    if let Some(stripped) = host.strip_prefix("http://") {
+        host = stripped;
+    } else if let Some(stripped) = host.strip_prefix("https://") {
+        host = stripped;
+    }
+    host.trim_matches('/').to_owned()
+}
+
+fn host_with_port(host: &str, port: i32) -> String {
+    if host.contains(':') {
+        host.to_owned()
+    } else {
+        format!("{host}:{port}")
+    }
 }
 
 // Single source of truth for the "awaiting deployment" backoff. The server has
@@ -827,9 +867,7 @@ impl RendezvousMediator {
 
     fn get_relay_server(&self, provided_by_rendezvous_server: String) -> String {
         let mut relay_server = Config::get_option("relay-server");
-        if let Some(advertised) =
-            crate::managed_server::relay_server_for_peer_advertisement(&relay_server)
-        {
+        if let Some(advertised) = relay_server_for_peer_advertisement(&relay_server) {
             relay_server = advertised;
         }
         if relay_server.is_empty() {

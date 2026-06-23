@@ -436,6 +436,30 @@ class AbModel {
     return res;
   }
 
+  Future<bool> changeAliasEverywhere(
+      {required String id, required String alias}) async {
+    var changed = false;
+    var ok = true;
+    for (final entry in addressbooks.entries) {
+      final ab = entry.value;
+      if (!ab.canWrite() || !ab.peers.any((peer) => peer.id == id)) {
+        continue;
+      }
+      changed = true;
+      final res = await ab.changeAlias(id: id, alias: alias);
+      ok = ok && res;
+      if (res) {
+        await pullNonLegacyAfterChange(name: entry.key);
+      }
+    }
+    if (changed) {
+      currentAbPeers.refresh();
+      _refreshTab();
+      _saveCache();
+    }
+    return ok;
+  }
+
   Future<bool> changeNote({required String id, required String note}) async {
     bool res = await current.changeNote(id: id, note: note);
     await pullNonLegacyAfterChange();

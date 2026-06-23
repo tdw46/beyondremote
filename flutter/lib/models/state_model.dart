@@ -77,6 +77,12 @@ class StateGlobal {
   setMinimized(bool v) => _isMinimized = v;
 
   setFullscreen(bool v, {bool procWnd = true}) {
+    if (_fullscreen.value == v) {
+      if (procWnd && isMacOS && v && isDesktop) {
+        procFullscreenNative(true);
+      }
+      return;
+    }
     if (_fullscreen.value != v) {
       _fullscreen.value = v;
       _showTabBar.value = !_fullscreen.value;
@@ -107,10 +113,29 @@ class StateGlobal {
     _windowBorderWidth.value = fullscreen.isTrue ? 0 : kWindowBorderWidth;
     if (procWnd) {
       final wc = WindowController.fromWindowId(windowId);
-      wc.setFullscreen(_fullscreen.isTrue).then((_) {
-        // We remove the redraw (width + 1, height + 1), because this issue cannot be reproduced.
-        // https://github.com/rustdesk/rustdesk/issues/9675
-      });
+      _setNativeFullscreen(wc, _fullscreen.isTrue);
+    }
+  }
+
+  Future<void> _setNativeFullscreen(WindowController wc, bool value) async {
+    await wc.setFullscreen(value);
+    if (!isMacOS || !value) {
+      return;
+    }
+    await Future.delayed(const Duration(milliseconds: 450));
+    if (_fullscreen.isFalse) {
+      return;
+    }
+    try {
+      if (!await wc.isFullScreen()) {
+        await wc.setFullscreen(false);
+        await Future.delayed(const Duration(milliseconds: 80));
+        if (_fullscreen.isTrue) {
+          await wc.setFullscreen(true);
+        }
+      }
+    } catch (e) {
+      print("failed to verify macOS fullscreen: $e");
     }
   }
 
