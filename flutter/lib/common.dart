@@ -3895,8 +3895,7 @@ Widget _buildPresetPasswordWarning() {
           translate("Security Alert"),
           style: TextStyle(
             color: Colors.red,
-            fontSize:
-                18,
+            fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
         )).paddingOnly(bottom: 8),

@@ -28,10 +28,12 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
   int mapPosToPercent(double p) => _mapPosToPercent(p);
 
   static const int minPercent = kScaleCustomMinPercent;
-  static const int pivotPercent = kScaleCustomPivotPercent; // 100% should be at 1/3 of track
+  static const int pivotPercent =
+      kScaleCustomPivotPercent; // 100% should be at 1/3 of track
   static const int maxPercent = kScaleCustomMaxPercent;
   static const double pivotPos = kScaleCustomPivotPos; // first 1/3 → up to 100%
-  static const double detentEpsilon = kScaleCustomDetentEpsilon; // snap range around pivot (~0.6%)
+  static const double detentEpsilon =
+      kScaleCustomDetentEpsilon; // snap range around pivot (~0.6%)
 
   // Clamp helper for local use
   int _clampScale(int v) => clampCustomScalePercent(v);
