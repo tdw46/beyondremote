@@ -61,86 +61,26 @@
 * Do not make formatting-only changes.
 * Keep naming/style consistent with nearby code.
 
-## Local Validation Toolchains
+## Validation Rules
 
-When editing Flutter/Dart code, validate locally before pushing whenever possible.
-This repo's normal CI toolchain is Flutter 3.24.5 / Dart 3.5.4 and Rust 1.75.
-Windows arm64 CI uses a patched newer Flutter path; do not switch the committed
-source to that newer Flutter API set unless the workflow is being updated too.
+* Validate locally before pushing whenever practical.
+* For Flutter/Dart edits, run `dart format --set-exit-if-changed` on changed
+  Dart files, then `flutter analyze` on the same changed files.
+* For Rust edits, run `rustfmt --check` on changed Rust files. Prefer a targeted
+  `cargo check` for the edited crate or feature set when local toolchains allow.
+* Always run `git diff --check` before committing.
+* Treat analyzer warnings and errors as actionable. Existing info-level lint
+  noise may be reported without blocking if unrelated to the change.
+* If a local platform toolchain is missing, state exactly which validation could
+  not run and why.
 
-### macOS Setup
+## Toolchain Notes
 
-Install Xcode from the App Store, then run:
-
-```sh
-xcode-select --install
-sudo xcodebuild -license accept
-```
-
-Install Homebrew if needed, then:
-
-```sh
-brew install git git-lfs cmake ninja pkg-config nasm yasm cocoapods rustup-init
-rustup-init -y
-source "$HOME/.cargo/env"
-rustup toolchain install 1.75.0
-rustup default 1.75.0
-```
-
-Install the pinned Flutter SDK instead of the latest Flutter:
-
-```sh
-mkdir -p "$HOME/development"
-git clone https://github.com/flutter/flutter.git "$HOME/development/flutter-3.24.5"
-cd "$HOME/development/flutter-3.24.5"
-git checkout 3.24.5
-export PATH="$HOME/development/flutter-3.24.5/bin:$PATH"
-flutter doctor
-flutter precache --macos
-```
-
-Persist that PATH in `~/.zshrc`:
-
-```sh
-echo 'export PATH="$HOME/development/flutter-3.24.5/bin:$PATH"' >> ~/.zshrc
-```
-
-For Android validation on macOS, install Android Studio, then install:
-
-* Android SDK Platform 35 or the platform requested by the workflow
-* Android SDK Build-Tools
-* Android SDK Command-line Tools
-* NDK side by side
-* CMake
-
-Then accept licenses:
-
-```sh
-flutter doctor --android-licenses
-```
-
-### Flutter/Dart Checks
-
-Run these from the repo root after Dart/Flutter edits:
-
-```sh
-dart format --set-exit-if-changed <changed dart files>
-flutter analyze <changed dart files>
-git diff --check
-```
-
-For the files touched most often in remote-session UI work:
-
-```sh
-flutter analyze \
-  flutter/lib/common.dart \
-  flutter/lib/common/widgets/custom_scale_base.dart \
-  flutter/lib/common/widgets/toolbar.dart \
-  flutter/lib/consts.dart \
-  flutter/lib/desktop/pages/remote_tab_page.dart \
-  flutter/lib/desktop/widgets/remote_toolbar.dart \
-  flutter/lib/models/model.dart
-```
+* Normal release CI uses Flutter 3.24.5 / Dart 3.5.4 and Rust 1.75.
+* `Cargo.toml` declares `rust-version = "1.75"`.
+* Windows arm64 CI uses a patched newer Flutter path. Do not commit source
+  changes that require newer Flutter APIs unless the workflow is being updated
+  for all relevant platforms at the same time.
 
 ## Localization (`src/lang/*.rs`)
 
