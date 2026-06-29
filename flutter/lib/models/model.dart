@@ -127,6 +127,7 @@ class FfiModel with ChangeNotifier {
   bool _viewOnly = false;
   bool _showMyCursor = false;
   bool _openedAllDisplaysAsIndividualWindows = false;
+  bool _openedRememberedDisplayWindows = false;
   WeakReference<FFI> parent;
   late final SessionID sessionId;
 
@@ -1458,6 +1459,7 @@ class FfiModel with ChangeNotifier {
 
     if (!isCache) {
       tryUseAllMyDisplaysForTheRemoteSession(peerId);
+      tryRestoreRememberedDisplayWindows(peerId);
     }
   }
 
@@ -1551,6 +1553,42 @@ class FfiModel with ChangeNotifier {
     for (var i = 1; i < length; i++) {
       openMonitorInNewTabOrWindow(i, peerId, _pi,
           screenRect: screenRectList[i]);
+    }
+  }
+
+  tryRestoreRememberedDisplayWindows(String peerId) async {
+    final ffi = parent.target;
+    if (ffi == null || ffi.isDisplaySubwindow) {
+      return;
+    }
+    if (ffi.connType != ConnType.defaultConn) {
+      return;
+    }
+    if (bind.sessionGetDisplaysAsIndividualWindows(sessionId: sessionId) !=
+        'Y') {
+      return;
+    }
+    if (!_pi.isSupportMultiDisplay || _pi.displays.length <= 1) {
+      return;
+    }
+    if (_openedRememberedDisplayWindows) {
+      return;
+    }
+
+    final remembered = getRememberedPeerDisplayWindows(peerId)
+        .where((display) =>
+            display >= 0 &&
+            display < _pi.displays.length &&
+            display != _pi.currentDisplay)
+        .toList()
+      ..sort();
+    if (remembered.isEmpty) {
+      return;
+    }
+
+    _openedRememberedDisplayWindows = true;
+    for (final display in remembered) {
+      openMonitorInNewTabOrWindow(display, peerId, _pi);
     }
   }
 
@@ -2328,7 +2366,10 @@ class CanvasModel with ChangeNotifier {
   updateSize() => _size = getSize();
 
   updateViewStyle({refreshMousePos = true, notify = true}) async {
-    final style = await bind.sessionGetViewStyle(sessionId: sessionId);
+    final ffi = parent.target;
+    final style = ffi == null
+        ? await bind.sessionGetViewStyle(sessionId: sessionId)
+        : await ffi.getEffectiveViewStyle();
     if (style == null) {
       return;
     }
@@ -2361,7 +2402,10 @@ class CanvasModel with ChangeNotifier {
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
       try {
-        _scale = await getSessionCustomScale(sessionId);
+        final percent = ffi == null
+            ? await getSessionCustomScalePercent(sessionId)
+            : await ffi.getEffectiveCustomScalePercent();
+        _scale = percentToScale(percent);
       } catch (e, stack) {
         debugPrint('Error in getSessionCustomScale: $e');
         debugPrintStack(stackTrace: stack);
@@ -2702,7 +2746,7 @@ class CanvasModel with ChangeNotifier {
       _scale = 1.0 / _devicePixelRatio;
     }
     _resetCanvasOffset(getDisplayWidth(), getDisplayHeight());
-    bind.sessionSetViewStyle(sessionId: sessionId, value: _lastViewStyle.style);
+    unawaited(parent.target?.setEffectiveViewStyle(_lastViewStyle.style));
     notifyListeners();
   }
 
@@ -3659,6 +3703,7 @@ class FFI {
   var version = '';
   var connType = ConnType.defaultConn;
   var closed = false;
+  int? displayWindowDisplay;
 
   /// dialogManager use late to ensure init after main page binding [globalKey]
   late final dialogManager = OverlayDialogManager();
@@ -3722,6 +3767,83 @@ class FFI {
         name: PeersModelName.lan, loadEvent: LoadEvent.lan, getInitPeers: null);
   }
 
+  bool get isDisplaySubwindow => displayWindowDisplay != null;
+
+  int? get displayScopedOptionIndex {
+    if (!(isDesktop || isWebDesktop)) {
+      return null;
+    }
+    if (connType != ConnType.defaultConn) {
+      return null;
+    }
+    if (bind.sessionGetDisplaysAsIndividualWindows(sessionId: sessionId) !=
+        'Y') {
+      return null;
+    }
+    final display = ffiModel.pi.currentDisplay;
+    if (display < 0 || display == kAllDisplayValue) {
+      return null;
+    }
+    if (!ffiModel.pi.isSupportMultiDisplay ||
+        ffiModel.pi.displays.length <= 1) {
+      return null;
+    }
+    return display;
+  }
+
+  Future<String?> getEffectiveViewStyle() async {
+    final display = displayScopedOptionIndex;
+    if (display != null) {
+      final peerStyle = bind.mainGetPeerFlutterOptionSync(
+          id: id,
+          k: peerDisplayOptionKey(kPeerDisplayViewStyleKeyPrefix, display));
+      if (isValidRemoteViewStyle(peerStyle)) {
+        await bind.sessionSetViewStyle(sessionId: sessionId, value: peerStyle);
+        return peerStyle;
+      }
+    }
+    return bind.sessionGetViewStyle(sessionId: sessionId);
+  }
+
+  Future<void> setEffectiveViewStyle(String value) async {
+    await bind.sessionSetViewStyle(sessionId: sessionId, value: value);
+    final display = displayScopedOptionIndex;
+    if (display != null && isValidRemoteViewStyle(value)) {
+      bind.mainSetPeerFlutterOptionSync(
+          id: id,
+          k: peerDisplayOptionKey(kPeerDisplayViewStyleKeyPrefix, display),
+          v: value);
+    }
+  }
+
+  Future<int> getEffectiveCustomScalePercent() async {
+    final display = displayScopedOptionIndex;
+    if (display != null) {
+      final peerPercent = bind.mainGetPeerFlutterOptionSync(
+          id: id,
+          k: peerDisplayOptionKey(
+              kPeerDisplayCustomScalePercentKeyPrefix, display));
+      if (peerPercent.isNotEmpty) {
+        return parseCustomScalePercent(peerPercent);
+      }
+    }
+    return getSessionCustomScalePercent(sessionId);
+  }
+
+  Future<void> setEffectiveCustomScalePercent(int percent) async {
+    final value = clampCustomScalePercent(percent).toString();
+    await bind.sessionSetFlutterOption(
+        sessionId: sessionId, k: kCustomScalePercentKey, v: value);
+    final display = displayScopedOptionIndex;
+    if (display != null) {
+      bind.mainSetPeerFlutterOptionSync(
+          id: id,
+          k: peerDisplayOptionKey(
+              kPeerDisplayCustomScalePercentKeyPrefix, display),
+          v: value);
+    }
+  }
+
   /// Mobile reuse FFI
   void mobileReset() {
     ffiModel.resetRestartReconnectState();
@@ -3750,6 +3872,7 @@ class FFI {
     List<int>? displays,
   }) {
     closed = false;
+    displayWindowDisplay = tabWindowId != null ? display : null;
     if (isMobile) mobileReset();
     assert(
         (!(isPortForward && isViewCamera)) &&

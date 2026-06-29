@@ -1345,8 +1345,7 @@ class ScreenAdjustor {
   }
 
   Future<bool> isWindowCanBeAdjusted() async {
-    final viewStyle =
-        await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
+    final viewStyle = await ffi.getEffectiveViewStyle() ?? '';
     if (viewStyle != kRemoteViewStyleOriginal) {
       return false;
     }
@@ -1424,7 +1423,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
     // Initialize custom percent from stored option once
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        final v = await getSessionCustomScalePercent(widget.ffi.sessionId);
+        final v = await widget.ffi.getEffectiveCustomScalePercent();
         if (_customPercent.value != v) {
           _customPercent.value = v;
         }
@@ -1549,7 +1548,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
   Widget _customControlsIfCustomSelected({ValueChanged<int>? onChanged}) {
     return futureBuilder(future: () async {
-      final current = await bind.sessionGetViewStyle(sessionId: ffi.sessionId);
+      final current = await ffi.getEffectiveViewStyle();
       return current == kRemoteViewStyleCustom;
     }(), hasData: (data) {
       final isCustom = data as bool;
@@ -1566,8 +1565,7 @@ class _DisplayMenuState extends State<_DisplayMenu> {
 
   scrollStyle(_IconSubmenuButtonState state, ColorScheme colorScheme) {
     return futureBuilder(future: () async {
-      final viewStyle =
-          await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
+      final viewStyle = await ffi.getEffectiveViewStyle() ?? '';
       final visible = viewStyle == kRemoteViewStyleOriginal ||
           viewStyle == kRemoteViewStyleCustom;
       final scrollStyle =

@@ -88,6 +88,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           )) {
             return;
           }
+          _rememberDisplayWindowClosed(peerId!);
           tabController.closeBy(peerId!);
         },
         page: RemotePage(
@@ -453,6 +454,10 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
   _update_remote_count() =>
       RemoteCountState.find().value = tabController.length;
 
+  void _rememberDisplayWindowClosed(String id) {
+    rememberPeerDisplayWindow(id, _display, false);
+  }
+
   Future<dynamic> _remoteMethodHandler(call, fromWindowId) async {
     debugPrint(
         "[Remote Page] call ${call.method} with args ${call.arguments} from window $fromWindowId");
@@ -493,6 +498,7 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
           )) {
             return;
           }
+          rememberPeerDisplayWindow(id, display, false);
           tabController.closeBy(id);
         },
         page: RemotePage(

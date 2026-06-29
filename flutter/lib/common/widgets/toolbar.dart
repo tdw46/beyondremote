@@ -649,12 +649,11 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
 
 Future<List<TRadioMenu<String>>> toolbarViewStyle(
     BuildContext context, String id, FFI ffi) async {
-  final groupValue =
-      await bind.sessionGetViewStyle(sessionId: ffi.sessionId) ?? '';
+  final groupValue = await ffi.getEffectiveViewStyle() ?? '';
   void onChanged(String? value) async {
     if (value == null) return;
-    bind
-        .sessionSetViewStyle(sessionId: ffi.sessionId, value: value)
+    ffi
+        .setEffectiveViewStyle(value)
         .then((_) => ffi.canvasModel.updateViewStyle());
   }
 
@@ -863,7 +862,7 @@ Future<List<TToggleMenu>> toolbarCursor(
         }));
   }
   // zoom cursor
-  final viewStyle = await bind.sessionGetViewStyle(sessionId: sessionId) ?? '';
+  final viewStyle = await ffi.getEffectiveViewStyle() ?? '';
   if (!isMobile &&
       pi.platform != kPeerPlatformAndroid &&
       viewStyle != kRemoteViewStyleOriginal) {

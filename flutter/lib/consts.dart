@@ -85,6 +85,10 @@ const String kWindowEventGetCachedSessionData = "get_cached_session_data";
 const String kWindowEventOpenMonitorSession = "open_monitor_session";
 
 const String kOptionViewStyle = "view_style";
+const String kPeerDisplayViewStyleKeyPrefix = "display_view_style_";
+const String kPeerDisplayCustomScalePercentKeyPrefix =
+    "display_custom_scale_percent_";
+const String kPeerOpenDisplayWindowsKey = "open_display_windows";
 const String kOptionScrollStyle = "scroll_style";
 const String kOptionEdgeScrollEdgeThickness = "edge-scroll-edge-thickness";
 const String kOptionImageQuality = "image_quality";

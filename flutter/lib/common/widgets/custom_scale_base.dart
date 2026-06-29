@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:debounce_throttle/debounce_throttle.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/model.dart';
-import 'package:flutter_hbb/models/platform_model.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 import 'package:flutter_hbb/common.dart';
 
@@ -85,7 +84,7 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
     );
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
-        final v = await getSessionCustomScalePercent(ffi.sessionId);
+        final v = await ffi.getEffectiveCustomScalePercent();
         if (mounted) {
           setState(() {
             _scaleValue = v;
@@ -105,14 +104,10 @@ abstract class CustomScaleControls<T extends StatefulWidget> extends State<T> {
       _scaleValue = v;
     });
     try {
-      await bind.sessionSetFlutterOption(
-          sessionId: ffi.sessionId,
-          k: kCustomScalePercentKey,
-          v: v.toString());
-      final curStyle = await bind.sessionGetViewStyle(sessionId: ffi.sessionId);
+      await ffi.setEffectiveCustomScalePercent(v);
+      final curStyle = await ffi.getEffectiveViewStyle();
       if (curStyle != kRemoteViewStyleCustom) {
-        await bind.sessionSetViewStyle(
-            sessionId: ffi.sessionId, value: kRemoteViewStyleCustom);
+        await ffi.setEffectiveViewStyle(kRemoteViewStyleCustom);
       }
       await ffi.canvasModel.updateViewStyle();
       if (isMobile) {

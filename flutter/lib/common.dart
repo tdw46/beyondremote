@@ -3393,12 +3393,65 @@ openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
       updateCursorPos: updateCursorPos);
 }
 
+String peerDisplayOptionKey(String prefix, int display) => '$prefix$display';
+
+bool isValidRemoteViewStyle(String? value) =>
+    value == kRemoteViewStyleOriginal ||
+    value == kRemoteViewStyleAdaptive ||
+    value == kRemoteViewStyleCustom;
+
+Set<int> getRememberedPeerDisplayWindows(String peerId) {
+  final raw = bind.mainGetPeerFlutterOptionSync(
+      id: peerId, k: kPeerOpenDisplayWindowsKey);
+  if (raw.isEmpty) {
+    return {};
+  }
+  try {
+    final decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return decoded
+          .map((e) => e is int ? e : int.tryParse(e.toString()))
+          .whereType<int>()
+          .where((display) => display >= 0 && display != kAllDisplayValue)
+          .toSet();
+    }
+  } catch (_) {
+    // Fall back to the old/simple comma-separated shape if present.
+  }
+  return raw
+      .split(',')
+      .map((e) => int.tryParse(e.trim()))
+      .whereType<int>()
+      .where((display) => display >= 0 && display != kAllDisplayValue)
+      .toSet();
+}
+
+void setRememberedPeerDisplayWindows(String peerId, Set<int> displays) {
+  final sorted = displays.toList()..sort();
+  bind.mainSetPeerFlutterOptionSync(
+      id: peerId, k: kPeerOpenDisplayWindowsKey, v: jsonEncode(sorted));
+}
+
+void rememberPeerDisplayWindow(String peerId, int? display, bool open) {
+  if (display == null || display < 0 || display == kAllDisplayValue) {
+    return;
+  }
+  final displays = getRememberedPeerDisplayWindows(peerId);
+  if (open) {
+    displays.add(display);
+  } else {
+    displays.remove(display);
+  }
+  setRememberedPeerDisplayWindows(peerId, displays);
+}
+
 // Open new tab or window to show this monitor.
 // For now just open new window.
 //
 // screenRect is used to move the new window to the specified screen and set fullscreen.
 openMonitorInNewTabOrWindow(int i, String peerId, PeerInfo pi,
     {Rect? screenRect}) {
+  rememberPeerDisplayWindow(peerId, i, true);
   final args = {
     'window_id': stateGlobal.windowId,
     'peer_id': peerId,
