@@ -268,8 +268,7 @@ class _WidgetOPState extends State<WidgetOP> {
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0),
                     child: Builder(builder: (context) {
-                      final errorColor =
-                          Theme.of(context).colorScheme.error;
+                      final errorColor = Theme.of(context).colorScheme.error;
                       final bgColor = Theme.of(context)
                           .colorScheme
                           .errorContainer
@@ -290,12 +289,11 @@ class _WidgetOPState extends State<WidgetOP> {
                             Flexible(
                               child: SelectableText(
                                 translate(_failedMsg),
-                                style: DefaultTextStyle.of(context)
-                                    .style
-                                    .copyWith(
-                                      fontSize: 13,
-                                      color: errorColor,
-                                    ),
+                                style:
+                                    DefaultTextStyle.of(context).style.copyWith(
+                                          fontSize: 13,
+                                          color: errorColor,
+                                        ),
                               ),
                             ),
                           ],
@@ -502,6 +500,8 @@ Future<bool?> loginDialog() async {
               await bind.mainSetLocalOption(
                   key: 'user_info', value: jsonEncode(resp.user ?? {}));
             }
+            unawaited(
+                gFFI.userModel.refreshServerConfigFromAccount(force: true));
             if (close != null) {
               close(true);
             }
@@ -713,6 +713,8 @@ Future<bool?> verificationCodeDialog(
             if (resp.access_token != null) {
               await bind.mainSetLocalOption(
                   key: 'access_token', value: resp.access_token!);
+              unawaited(
+                  gFFI.userModel.refreshServerConfigFromAccount(force: true));
               close(true);
               return;
             }

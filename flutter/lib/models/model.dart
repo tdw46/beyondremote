@@ -3780,7 +3780,7 @@ class FFI {
         'Y') {
       return null;
     }
-    final display = ffiModel.pi.currentDisplay;
+    final display = displayWindowDisplay ?? ffiModel.pi.currentDisplay;
     if (display < 0 || display == kAllDisplayValue) {
       return null;
     }
@@ -3798,7 +3798,6 @@ class FFI {
           id: id,
           k: peerDisplayOptionKey(kPeerDisplayViewStyleKeyPrefix, display));
       if (isValidRemoteViewStyle(peerStyle)) {
-        await bind.sessionSetViewStyle(sessionId: sessionId, value: peerStyle);
         return peerStyle;
       }
     }
@@ -3806,14 +3805,15 @@ class FFI {
   }
 
   Future<void> setEffectiveViewStyle(String value) async {
-    await bind.sessionSetViewStyle(sessionId: sessionId, value: value);
     final display = displayScopedOptionIndex;
     if (display != null && isValidRemoteViewStyle(value)) {
       bind.mainSetPeerFlutterOptionSync(
           id: id,
           k: peerDisplayOptionKey(kPeerDisplayViewStyleKeyPrefix, display),
           v: value);
+      return;
     }
+    await bind.sessionSetViewStyle(sessionId: sessionId, value: value);
   }
 
   Future<int> getEffectiveCustomScalePercent() async {
@@ -3832,8 +3832,6 @@ class FFI {
 
   Future<void> setEffectiveCustomScalePercent(int percent) async {
     final value = clampCustomScalePercent(percent).toString();
-    await bind.sessionSetFlutterOption(
-        sessionId: sessionId, k: kCustomScalePercentKey, v: value);
     final display = displayScopedOptionIndex;
     if (display != null) {
       bind.mainSetPeerFlutterOptionSync(
@@ -3841,7 +3839,10 @@ class FFI {
           k: peerDisplayOptionKey(
               kPeerDisplayCustomScalePercentKeyPrefix, display),
           v: value);
+      return;
     }
+    await bind.sessionSetFlutterOption(
+        sessionId: sessionId, k: kCustomScalePercentKey, v: value);
   }
 
   /// Mobile reuse FFI

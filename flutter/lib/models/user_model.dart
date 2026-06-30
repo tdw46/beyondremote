@@ -13,6 +13,8 @@ import 'model.dart';
 import 'platform_model.dart';
 
 bool refreshingUser = false;
+bool refreshingAccountServerConfig = false;
+bool accountServerConfigRefreshAttempted = false;
 
 class UserModel {
   final RxString userName = ''.obs;
@@ -90,6 +92,7 @@ class UserModel {
 
       final user = UserPayload.fromJson(data);
       _parseAndUpdateUser(user);
+      await refreshServerConfigFromAccount();
     } catch (e) {
       debugPrint('Failed to refreshCurrentUser: $e');
     } finally {
@@ -236,6 +239,79 @@ class UserModel {
     }
 
     return loginResponse;
+  }
+
+  Future<void> refreshServerConfigFromAccount({bool force = false}) async {
+    if (!isMobile || bind.isDisableAccount()) return;
+    if (accountServerConfigRefreshAttempted && !force) return;
+    if (refreshingAccountServerConfig) return;
+
+    final token = bind.mainGetLocalOption(key: 'access_token');
+    if (token.isEmpty) return;
+
+    accountServerConfigRefreshAttempted = true;
+    refreshingAccountServerConfig = true;
+    try {
+      final url = await bind.mainGetApiServer();
+      if (url.trim().isEmpty) return;
+      final modifiedAt =
+          int.tryParse(bind.mainGetLocalOption(key: 'strategy_timestamp')) ?? 0;
+      final headers = getHttpHeaders();
+      headers['Content-Type'] = 'application/json';
+      final response = await http.post(Uri.parse('$url/api/heartbeat'),
+          headers: headers,
+          body: jsonEncode({
+            'id': await bind.mainGetMyId(),
+            'uuid': await bind.mainGetUuid(),
+            'modified_at': modifiedAt,
+          }));
+      if (response.statusCode != 200) {
+        debugPrint(
+            'refreshServerConfigFromAccount: HTTP ${response.statusCode}');
+        return;
+      }
+
+      final data = jsonDecode(decode_http_response(response));
+      if (data is! Map<String, dynamic>) return;
+      final rspModifiedAt = data['modified_at'];
+      if (rspModifiedAt != null) {
+        await bind.mainSetLocalOption(
+            key: 'strategy_timestamp', value: rspModifiedAt.toString());
+      }
+
+      final strategy = data['strategy'];
+      if (strategy is! Map<String, dynamic>) return;
+      final configOptions = strategy['config_options'];
+      if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
+        return;
+      }
+
+      final options = <String, String>{};
+      try {
+        final current = jsonDecode(await bind.mainGetOptions());
+        if (current is Map<String, dynamic>) {
+          current.forEach((key, value) {
+            options[key] = value?.toString() ?? '';
+          });
+        }
+      } catch (e) {
+        debugPrint('refreshServerConfigFromAccount: bad local options: $e');
+      }
+      configOptions.forEach((key, value) {
+        final optionKey = key.toString();
+        final optionValue = value?.toString() ?? '';
+        if (optionValue.isEmpty) {
+          options.remove(optionKey);
+        } else {
+          options[optionKey] = optionValue;
+        }
+      });
+      await bind.mainSetOptions(json: jsonEncode(options));
+    } catch (e) {
+      debugPrint('refreshServerConfigFromAccount failed: $e');
+    } finally {
+      refreshingAccountServerConfig = false;
+    }
   }
 
   static Future<List<dynamic>> queryOidcLoginOptions() async {
