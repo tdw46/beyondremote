@@ -20,6 +20,13 @@ function PhpString($Value) {
     return "'" + ([string]$Value).Replace('\', '\\').Replace("'", "\'") + "'"
 }
 
+function EnvOrDefault($Name, $Default) {
+    if ($envMap.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace($envMap[$Name])) {
+        return $envMap[$Name]
+    }
+    return $Default
+}
+
 function Save-CpanelFile($Dir, $File, $Content) {
     $body = @{ dir = $Dir; file = $File; content = $Content }
     $result = Invoke-RestMethod `
@@ -51,6 +58,13 @@ return [
         'password' => $(PhpString $envMap["SYNC_DB_PASSWORD"]),
     ],
     'app_secret' => $(PhpString $envMap["APP_SECRET"]),
+    'strategy_modified_at' => $(EnvOrDefault "CLIENT_CONFIG_VERSION" 1),
+    'client_config_options' => [
+        'custom-rendezvous-server' => $(PhpString (EnvOrDefault "CLIENT_ID_SERVER" "")),
+        'relay-server' => $(PhpString (EnvOrDefault "CLIENT_RELAY_SERVER" "")),
+        'api-server' => $(PhpString (EnvOrDefault "CLIENT_API_SERVER" $envMap["PUBLIC_API_BASE_URL"])),
+        'key' => $(PhpString (EnvOrDefault "CLIENT_SERVER_KEY" "")),
+    ],
     'oauth' => [
         'github' => [
             'client_id' => $(PhpString $envMap["GITHUB_CLIENT_ID"]),

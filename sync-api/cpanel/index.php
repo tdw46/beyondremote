@@ -518,8 +518,10 @@ function ab_peers(): void
     $stmt = db()->prepare('SELECT data FROM br_personal_peers WHERE user_id = ? ORDER BY peer_id');
     $stmt->execute([(int)$user['id']]);
     $rows = $stmt->fetchAll();
-    send_json(paged(array_map(function ($row) {
-        return json_decode($row['data'], true);
+    $userId = (int)$user['id'];
+    send_json(paged(array_map(function ($row) use ($userId) {
+        $peer = json_decode($row['data'], true) ?: [];
+        return repair_peer_device_fields($userId, $peer);
     }, $rows)));
 }
 
@@ -644,6 +646,9 @@ function group_peers(): void
     foreach ($stmt->fetchAll() as $row) {
         $info = json_decode($row['device_info'], true) ?: [];
         $peer = load_peer((int)$user['id'], (string)$row['remote_id']) ?: [];
+        if (empty($info)) {
+            $info = latest_auth_device_info((int)$user['id'], (string)$row['remote_id']);
+        }
         $alias = trim((string)($peer['alias'] ?? ''));
         $deviceName = $alias !== '' ? $alias : (string)($info['name'] ?? '');
         $peers[] = [
@@ -857,6 +862,9 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     if (!$hasDeviceInfo && $existingDevice) {
         $deviceInfo = json_decode((string)$existingDevice['device_info'], true) ?: [];
     }
+    if (empty($deviceInfo)) {
+        $deviceInfo = latest_auth_device_info($userId, $remoteId);
+    }
     $deviceName = (string)($deviceInfo['name'] ?? '');
     $stmt = db()->prepare('
         INSERT INTO br_devices (user_id, remote_id, uuid, device_info, last_seen_at)
@@ -864,7 +872,7 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
         ON CONFLICT (user_id, remote_id) DO UPDATE
             SET uuid = EXCLUDED.uuid,
                 device_info = CASE
-                    WHEN EXCLUDED.device_info = '{}'::jsonb THEN br_devices.device_info
+                    WHEN EXCLUDED.device_info = jsonb_build_object() THEN br_devices.device_info
                     ELSE EXCLUDED.device_info
                 END,
                 last_seen_at = NOW()
@@ -981,6 +989,54 @@ function load_device(int $userId, string $remoteId): ?array
     $stmt->execute([$userId, normalize_remote_id($remoteId)]);
     $row = $stmt->fetch();
     return $row ?: null;
+}
+
+function latest_auth_device_info(int $userId, string $remoteId): array
+{
+    $stmt = db()->prepare('
+        SELECT ar.device_info
+        FROM br_auth_requests ar
+        JOIN br_sessions s ON ar.auth_body->>\'access_token\' = s.token_hash
+        WHERE s.user_id = ? AND ar.remote_id = ? AND ar.device_info <> jsonb_build_object()
+        ORDER BY ar.created_at DESC
+        LIMIT 1
+    ');
+    $stmt->execute([$userId, normalize_remote_id($remoteId)]);
+    $row = $stmt->fetch();
+    if ($row) {
+        return json_decode((string)$row['device_info'], true) ?: [];
+    }
+
+    $stmt = db()->prepare('
+        SELECT device_info
+        FROM br_auth_requests
+        WHERE remote_id = ? AND device_info <> jsonb_build_object()
+        ORDER BY created_at DESC
+        LIMIT 1
+    ');
+    $stmt->execute([normalize_remote_id($remoteId)]);
+    $row = $stmt->fetch();
+    return $row ? (json_decode((string)$row['device_info'], true) ?: []) : [];
+}
+
+function repair_peer_device_fields(int $userId, array $peer): array
+{
+    $platform = trim((string)($peer['platform'] ?? ''));
+    $hostname = trim((string)($peer['hostname'] ?? ''));
+    if ($platform !== '' && $hostname !== '') {
+        return $peer;
+    }
+    $info = latest_auth_device_info($userId, (string)($peer['id'] ?? ''));
+    if ($platform === '' && !empty($info['os'])) {
+        $peer['platform'] = map_platform((string)$info['os']);
+    }
+    if ($hostname === '' && !empty($info['name'])) {
+        $peer['hostname'] = (string)$info['name'];
+        if (trim((string)($peer['alias'] ?? '')) === '') {
+            $peer['alias'] = (string)$info['name'];
+        }
+    }
+    return $peer;
 }
 
 function strategy_config_options(): array

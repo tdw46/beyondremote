@@ -15,6 +15,7 @@ import 'platform_model.dart';
 bool refreshingUser = false;
 bool refreshingAccountServerConfig = false;
 bool accountServerConfigRefreshAttempted = false;
+bool refreshingOtherModels = false;
 
 class UserModel {
   final RxString userName = ''.obs;
@@ -46,6 +47,11 @@ class UserModel {
       //  For _updateLocalUserInfo, network error will be set later
       //  For login success, should clear network error
       networkError.value = '';
+      if (p0.isNotEmpty) {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          updateOtherModels(quiet: true);
+        });
+      }
     });
   }
 
@@ -149,11 +155,16 @@ class UserModel {
   }
 
   // update ab and group status
-  static Future<void> updateOtherModels() async {
-    await Future.wait([
-      gFFI.abModel.pullAb(force: ForcePullAb.listAndCurrent, quiet: false),
-      gFFI.groupModel.pull()
-    ]);
+  static Future<void> updateOtherModels({bool quiet = false}) async {
+    if (refreshingOtherModels) return;
+    refreshingOtherModels = true;
+    try {
+      await gFFI.groupModel.pull(force: true, quiet: quiet);
+      await gFFI.abModel
+          .pullAb(force: ForcePullAb.listAndCurrent, quiet: quiet);
+    } finally {
+      refreshingOtherModels = false;
+    }
   }
 
   Future<void> logOut({String? apiServer}) async {
@@ -311,6 +322,9 @@ class UserModel {
         }
       });
       await bind.mainSetOptions(json: jsonEncode(options));
+      if (force) {
+        await updateOtherModels(quiet: true);
+      }
     } catch (e) {
       debugPrint('refreshServerConfigFromAccount failed: $e');
     } finally {
