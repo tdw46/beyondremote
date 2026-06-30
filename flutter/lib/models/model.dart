@@ -1580,8 +1580,16 @@ class FfiModel with ChangeNotifier {
             display >= 0 &&
             display < _pi.displays.length &&
             display != _pi.currentDisplay)
-        .toList()
-      ..sort();
+        .toList();
+    remembered.sort((a, b) {
+      final displayA = _pi.displays[a];
+      final displayB = _pi.displays[b];
+      final xCompare = displayA.x.compareTo(displayB.x);
+      if (xCompare != 0) return xCompare;
+      final yCompare = displayA.y.compareTo(displayB.y);
+      if (yCompare != 0) return yCompare;
+      return a.compareTo(b);
+    });
     if (remembered.isEmpty) {
       return;
     }

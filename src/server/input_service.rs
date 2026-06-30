@@ -930,6 +930,28 @@ fn fix_modifiers(modifiers: &[EnumOrUnknown<ControlKey>], en: &mut Enigo, ck: i3
     }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn press_mouse_modifiers(
+    en: &mut Enigo,
+    modifiers: &[EnumOrUnknown<ControlKey>],
+    to_release: &mut Vec<Key>,
+) {
+    for ref ck in modifiers.iter() {
+        if let Some(key) = control_key_value_to_key(ck.value()) {
+            if !is_pressed(&key, en) {
+                #[cfg(target_os = "linux")]
+                if key == Key::Alt && is_altgr_pressed() {
+                    continue;
+                }
+                en.key_down(key.clone()).ok();
+                to_release.push(key.clone());
+                #[cfg(windows)]
+                modifier_sleep();
+            }
+        }
+    }
+}
+
 // Update time to avoid send cursor position event to the peer.
 // See `run_pos` --> `set_cursor_position` --> `exclude`
 #[inline]
@@ -1088,11 +1110,16 @@ pub fn handle_mouse_simulation_(evt: &MouseEvent, conn: i32) {
                         en.key_down(key.clone()).ok();
                         #[cfg(windows)]
                         modifier_sleep();
-                        to_release.push(key);
+                        to_release.push(key.clone());
                     }
                 }
             }
         }
+    }
+    #[cfg(not(target_os = "macos"))]
+    if matches!(evt_type, MOUSE_TYPE_WHEEL | MOUSE_TYPE_TRACKPAD) {
+        fix_modifiers(&evt.modifiers[..], &mut en, 0);
+        press_mouse_modifiers(&mut en, &evt.modifiers[..], &mut to_release);
     }
     match evt_type {
         MOUSE_TYPE_MOVE => {
@@ -1557,20 +1584,7 @@ fn is_altgr_pressed() -> bool {
 
 #[cfg(not(target_os = "macos"))]
 fn press_modifiers(en: &mut Enigo, key_event: &KeyEvent, to_release: &mut Vec<Key>) {
-    for ref ck in key_event.modifiers.iter() {
-        if let Some(key) = control_key_value_to_key(ck.value()) {
-            if !is_pressed(&key, en) {
-                #[cfg(target_os = "linux")]
-                if key == Key::Alt && is_altgr_pressed() {
-                    continue;
-                }
-                en.key_down(key.clone()).ok();
-                to_release.push(key.clone());
-                #[cfg(windows)]
-                modifier_sleep();
-            }
-        }
-    }
+    press_mouse_modifiers(en, &key_event.modifiers[..], to_release);
 }
 
 fn sync_modifiers(en: &mut Enigo, key_event: &KeyEvent, _to_release: &mut Vec<Key>) {
