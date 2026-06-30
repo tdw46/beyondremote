@@ -19,6 +19,8 @@ String normalizePeerPlatform(dynamic value) {
     case 'darwin':
     case 'osx':
       return kPeerPlatformMacOS;
+    case 'ios':
+      return kPeerPlatformMacOS;
     case 'android':
       return kPeerPlatformAndroid;
     default:

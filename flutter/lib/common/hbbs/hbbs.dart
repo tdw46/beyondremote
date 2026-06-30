@@ -118,12 +118,23 @@ class PeerPayload {
       case 'linux':
         return kPeerPlatformLinux;
       case 'macos':
+      case 'mac os':
+      case 'darwin':
+      case 'osx':
+      case 'ios':
         return kPeerPlatformMacOS;
       case 'android':
         return kPeerPlatformAndroid;
       default:
-        if (fieldStr.toLowerCase().contains('linux')) {
+        final lower = fieldStr.toLowerCase();
+        if (lower.contains('linux')) {
           return kPeerPlatformLinux;
+        }
+        if (lower.contains('macos') || lower.contains('mac os')) {
+          return kPeerPlatformMacOS;
+        }
+        if (lower.contains('ios')) {
+          return kPeerPlatformMacOS;
         }
         return null;
     }

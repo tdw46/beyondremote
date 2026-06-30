@@ -896,6 +896,10 @@ pub fn get_sysinfo() -> serde_json::Value {
     {
         os = format!("{os} - {}", system.os_version().unwrap_or_default());
     }
+    #[cfg(target_os = "ios")]
+    {
+        os = std::env::consts::OS.to_owned();
+    }
     let hostname = hostname(); // sys.hostname() return localhost on android in my test
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let out;

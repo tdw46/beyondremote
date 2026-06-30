@@ -2668,6 +2668,32 @@ class _CloseMenu extends StatelessWidget {
   const _CloseMenu({Key? key, required this.id, required this.ffi})
       : super(key: key);
 
+  Future<bool?> _askDisconnectAllDisplays() async {
+    if (!ffi.isDisplaySubwindow ||
+        bind.sessionGetDisplaysAsIndividualWindows(sessionId: ffi.sessionId) !=
+            'Y' ||
+        ffi.ffiModel.pi.displays.length <= 1) {
+      return false;
+    }
+    return await ffi.dialogManager.show<bool>((setState, close, context) {
+      return CustomAlertDialog(
+        title: Row(children: [
+          const Icon(Icons.warning_amber_sharp,
+              color: Colors.redAccent, size: 28),
+          const SizedBox(width: 10),
+          Text(translate("Close")),
+        ]),
+        content: Text(translate("Disconnect all displays?")),
+        actions: [
+          dialogButton("Cancel", onPressed: close, isOutline: true),
+          dialogButton("This display", onPressed: () => close(false)),
+          dialogButton("All displays", onPressed: () => close(true)),
+        ],
+        onCancel: close,
+      );
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return _IconMenuButton(
@@ -2676,6 +2702,21 @@ class _CloseMenu extends StatelessWidget {
       onPressed: () async {
         if (await showConnEndAuditDialogCloseCanceled(ffi: ffi)) {
           return;
+        }
+        final closeAllDisplays = await _askDisconnectAllDisplays();
+        if (closeAllDisplays == null) {
+          return;
+        }
+        if (closeAllDisplays) {
+          try {
+            if (await DesktopMultiWindow.invokeMethod(
+                    kMainWindowId, kWindowEventClosePeerSessions, id) ==
+                true) {
+              return;
+            }
+          } catch (e) {
+            debugPrint('Failed to close display sessions for $id: $e');
+          }
         }
         closeConnection(id: id);
       },

@@ -1683,18 +1683,21 @@ Future<bool> matchPeer(
 
 /// Get the image for the current [platform].
 Widget getPlatformImage(String platform, {double size = 50}) {
-  if (platform.isEmpty) {
+  final normalizedPlatform = normalizePeerPlatform(platform);
+  if (normalizedPlatform.isEmpty) {
     return Container(width: size, height: size);
   }
-  if (platform == kPeerPlatformMacOS) {
-    platform = 'mac';
-  } else if (platform != kPeerPlatformLinux &&
-      platform != kPeerPlatformAndroid) {
-    platform = 'win';
-  } else {
-    platform = platform.toLowerCase();
+  final assetName = switch (normalizedPlatform) {
+    kPeerPlatformWindows => 'win',
+    kPeerPlatformMacOS => 'mac',
+    kPeerPlatformLinux => 'linux',
+    kPeerPlatformAndroid => 'android',
+    _ => '',
+  };
+  if (assetName.isEmpty) {
+    return Container(width: size, height: size);
   }
-  return SvgPicture.asset('assets/$platform.svg', height: size, width: size);
+  return SvgPicture.asset('assets/$assetName.svg', height: size, width: size);
 }
 
 class LastWindowPosition {
