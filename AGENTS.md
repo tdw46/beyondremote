@@ -81,6 +81,15 @@
 * Windows arm64 CI uses a patched newer Flutter path. Do not commit source
   changes that require newer Flutter APIs unless the workflow is being updated
   for all relevant platforms at the same time.
+* Unsigned macOS workflow artifacts are ad-hoc signed and can be rejected by
+  `spctl`; for local installs, copy the app bundle with `ditto` and clear
+  `com.apple.quarantine` after download.
+* iOS tag builds using `flutter build ipa --release --no-codesign` may only
+  publish `liblibrustdesk.a`; install locally by building unsigned, embedding
+  the Xcode-managed `com.tylerwalker.beyondremote` profile, then signing the
+  app bundle for device install.
+* If CocoaPods fails with `uninitialized constant ... Logger` on macOS, run
+  Flutter/CocoaPods commands with `RUBYOPT=-rlogger`.
 
 ## Localization (`src/lang/*.rs`)
 

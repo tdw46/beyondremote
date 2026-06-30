@@ -55,6 +55,9 @@ void setTemporaryPasswordLengthDialog(
 
 void showServerSettings(OverlayDialogManager dialogManager,
     void Function(VoidCallback) setState) async {
+  if (isMobile && gFFI.userModel.isLogin) {
+    await gFFI.userModel.refreshServerConfigFromAccount(force: true);
+  }
   Map<String, dynamic> options = {};
   try {
     options = jsonDecode(await bind.mainGetOptions());
@@ -94,8 +97,8 @@ void showServerSettingsWithValue(
   dialogManager.show((setState, close, context) {
     Future<void> refreshManagedStatus() async {
       try {
-        final status = jsonDecode(
-            await bind.mainGetCommon(key: 'managed-server-status'));
+        final status =
+            jsonDecode(await bind.mainGetCommon(key: 'managed-server-status'));
         if (status is Map<String, dynamic>) {
           setState(() {
             managedStatus = status;
@@ -218,8 +221,7 @@ void showServerSettingsWithValue(
                             await bind.mainSetCommon(
                                 key: 'managed-server-enable',
                                 value: value == true ? 'Y' : '');
-                            await refreshManagedStatusFor(
-                                Duration(seconds: 3));
+                            await refreshManagedStatusFor(Duration(seconds: 3));
                           },
                   ),
                 ),
@@ -270,8 +272,7 @@ void showServerSettingsWithValue(
                   ),
               ],
             ),
-            if (installing)
-              LinearProgressIndicator().marginOnly(top: 8),
+            if (installing) LinearProgressIndicator().marginOnly(top: 8),
           ],
         ),
       );
@@ -296,6 +297,29 @@ void showServerSettingsWithValue(
         isInProgress = false;
       });
       return ret;
+    }
+
+    Future<void> refreshFromAccount() async {
+      setState(() {
+        isInProgress = true;
+      });
+      await gFFI.userModel.refreshServerConfigFromAccount(force: true);
+      try {
+        final options = jsonDecode(await bind.mainGetOptions());
+        if (options is Map<String, dynamic>) {
+          final config = ServerConfig.fromOptions(options);
+          idCtrl.text = config.idServer;
+          relayCtrl.text = config.relayServer;
+          apiCtrl.text = config.apiServer;
+          keyCtrl.text = config.key;
+        }
+      } catch (e) {
+        debugPrint('Failed to refresh server config from account: $e');
+      } finally {
+        setState(() {
+          isInProgress = false;
+        });
+      }
     }
 
     Widget buildField(
@@ -347,6 +371,13 @@ void showServerSettingsWithValue(
       title: Row(
         children: [
           Expanded(child: Text(translate('ID/Relay Server'))),
+          Tooltip(
+            message: translate('Refresh'),
+            child: IconButton(
+              icon: Icon(Icons.sync, color: Colors.grey),
+              onPressed: isInProgress ? null : refreshFromAccount,
+            ),
+          ),
           ...ServerConfigImportExportWidgets(controllers, errMsgs),
         ],
       ),
@@ -372,7 +403,7 @@ void showServerSettingsWithValue(
                     helperText: 'Host and optional port for hbbs.',
                   ),
                   SizedBox(height: 8),
-                  if (!isIOS && !isWeb) ...[
+                  if (!isWeb) ...[
                     buildField(
                       translate('Relay Server'),
                       relayCtrl,

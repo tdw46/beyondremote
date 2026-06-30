@@ -61,7 +61,8 @@ class UserModel {
     final url = await bind.mainGetApiServer();
     final body = {
       'id': await bind.mainGetMyId(),
-      'uuid': await bind.mainGetUuid()
+      'uuid': await bind.mainGetUuid(),
+      'deviceInfo': _loginDeviceInfo(),
     };
     if (refreshingUser) return;
     try {
@@ -254,8 +255,10 @@ class UserModel {
     try {
       final url = await bind.mainGetApiServer();
       if (url.trim().isEmpty) return;
-      final modifiedAt =
-          int.tryParse(bind.mainGetLocalOption(key: 'strategy_timestamp')) ?? 0;
+      final modifiedAt = force
+          ? 0
+          : int.tryParse(bind.mainGetLocalOption(key: 'strategy_timestamp')) ??
+              0;
       final headers = getHttpHeaders();
       headers['Content-Type'] = 'application/json';
       final response = await http.post(Uri.parse('$url/api/heartbeat'),
@@ -263,6 +266,7 @@ class UserModel {
           body: jsonEncode({
             'id': await bind.mainGetMyId(),
             'uuid': await bind.mainGetUuid(),
+            'deviceInfo': _loginDeviceInfo(),
             'modified_at': modifiedAt,
           }));
       if (response.statusCode != 200) {
@@ -312,6 +316,16 @@ class UserModel {
     } finally {
       refreshingAccountServerConfig = false;
     }
+  }
+
+  Map<String, dynamic> _loginDeviceInfo() {
+    try {
+      final info = jsonDecode(bind.mainGetLoginDeviceInfo());
+      if (info is Map<String, dynamic>) return info;
+    } catch (e) {
+      debugPrint('Failed to decode login device info: $e');
+    }
+    return {};
   }
 
   static Future<List<dynamic>> queryOidcLoginOptions() async {

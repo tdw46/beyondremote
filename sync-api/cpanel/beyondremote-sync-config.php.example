@@ -7,6 +7,13 @@ return [
         'password' => 'replace_with_database_password',
     ],
     'app_secret' => 'replace_with_a_long_random_value',
+    'strategy_modified_at' => 1,
+    'client_config_options' => [
+        'custom-rendezvous-server' => '',
+        'relay-server' => '',
+        'api-server' => 'https://api.beyondstudios.us',
+        'key' => '',
+    ],
     'oauth' => [
         'github' => [
             'client_id' => '',

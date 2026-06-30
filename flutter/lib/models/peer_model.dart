@@ -8,7 +8,8 @@ import 'package:collection/collection.dart';
 
 String normalizePeerPlatform(dynamic value) {
   final platform = value?.toString().trim() ?? '';
-  switch (platform.toLowerCase()) {
+  final lower = platform.toLowerCase();
+  switch (lower) {
     case 'windows':
     case 'win':
       return kPeerPlatformWindows;
@@ -20,10 +21,16 @@ String normalizePeerPlatform(dynamic value) {
     case 'osx':
       return kPeerPlatformMacOS;
     case 'ios':
-      return kPeerPlatformMacOS;
+    case 'ipados':
+    case 'iphone':
+    case 'ipad':
+      return kPeerPlatformIOS;
     case 'android':
       return kPeerPlatformAndroid;
     default:
+      if (lower.startsWith('iphone') || lower.startsWith('ipad')) {
+        return kPeerPlatformIOS;
+      }
       return platform;
   }
 }

@@ -56,6 +56,9 @@ function route(string $method, string $path): void
     if ($method === 'POST' && $path === '/api/currentUser') {
         current_user();
     }
+    if ($method === 'POST' && $path === '/api/heartbeat') {
+        heartbeat();
+    }
     if ($method === 'POST' && $path === '/api/logout') {
         logout();
     }
@@ -283,6 +286,22 @@ function current_user(): void
     $user = require_user();
     register_device_from_body((int)$user['id'], json_body());
     send_json(user_payload($user));
+}
+
+function heartbeat(): void
+{
+    $user = require_user();
+    $body = json_body();
+    register_device_from_body((int)$user['id'], $body);
+    $modifiedAt = (int)($body['modified_at'] ?? 0);
+    $serverModifiedAt = strategy_modified_at();
+    $response = ['modified_at' => $serverModifiedAt];
+    if ($modifiedAt !== $serverModifiedAt) {
+        $response['strategy'] = [
+            'config_options' => strategy_config_options(),
+        ];
+    }
+    send_json($response);
 }
 
 function logout(): void
@@ -831,22 +850,32 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     if ($remoteId === '') {
         return;
     }
+    $hasDeviceInfo = !empty($deviceInfo);
     $existingPeer = load_peer($userId, $remoteId);
     $existingAlias = trim((string)($existingPeer['alias'] ?? ''));
+    $existingDevice = load_device($userId, $remoteId);
+    if (!$hasDeviceInfo && $existingDevice) {
+        $deviceInfo = json_decode((string)$existingDevice['device_info'], true) ?: [];
+    }
     $deviceName = (string)($deviceInfo['name'] ?? '');
     $stmt = db()->prepare('
         INSERT INTO br_devices (user_id, remote_id, uuid, device_info, last_seen_at)
         VALUES (?, ?, ?, ?::jsonb, NOW())
         ON CONFLICT (user_id, remote_id) DO UPDATE
-            SET uuid = EXCLUDED.uuid, device_info = EXCLUDED.device_info, last_seen_at = NOW()
+            SET uuid = EXCLUDED.uuid,
+                device_info = CASE
+                    WHEN EXCLUDED.device_info = '{}'::jsonb THEN br_devices.device_info
+                    ELSE EXCLUDED.device_info
+                END,
+                last_seen_at = NOW()
     ');
     $stmt->execute([$userId, $remoteId, $uuid, json_encode($deviceInfo ?: new stdClass())]);
 
     $peer = [
         'id' => $remoteId,
         'username' => '',
-        'hostname' => $deviceName,
-        'platform' => map_platform((string)($deviceInfo['os'] ?? '')),
+        'hostname' => $deviceName !== '' ? $deviceName : (string)($existingPeer['hostname'] ?? ''),
+        'platform' => map_platform((string)($deviceInfo['os'] ?? ($existingPeer['platform'] ?? ''))),
         'alias' => $existingAlias !== '' ? $existingAlias : $deviceName,
         'tags' => ['My devices'],
         'note' => 'Signed in with Beyond Remote',
@@ -944,6 +973,44 @@ function sync_legacy_ab_to_personal(int $userId, string $data): void
         $name = (string)$tag;
         ensure_tag($userId, $name, (int)($tagColors[$name] ?? tag_color($name)));
     }
+}
+
+function load_device(int $userId, string $remoteId): ?array
+{
+    $stmt = db()->prepare('SELECT remote_id, uuid, device_info FROM br_devices WHERE user_id = ? AND remote_id = ?');
+    $stmt->execute([$userId, normalize_remote_id($remoteId)]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+function strategy_config_options(): array
+{
+    $config = config();
+    $options = [];
+    if (isset($config['client_config_options']) && is_array($config['client_config_options'])) {
+        $options = $config['client_config_options'];
+    } elseif (isset($config['strategy']['config_options']) && is_array($config['strategy']['config_options'])) {
+        $options = $config['strategy']['config_options'];
+    }
+
+    $out = [];
+    foreach ($options as $key => $value) {
+        $out[(string)$key] = (string)$value;
+    }
+    return $out;
+}
+
+function strategy_modified_at(): int
+{
+    $config = config();
+    if (isset($config['strategy_modified_at'])) {
+        return (int)$config['strategy_modified_at'];
+    }
+    if (isset($config['strategy']['modified_at'])) {
+        return (int)$config['strategy']['modified_at'];
+    }
+    $options = strategy_config_options();
+    return empty($options) ? 0 : crc32(json_encode($options));
 }
 
 function find_auth_request(string $code): ?array
@@ -1094,6 +1161,9 @@ function map_platform(string $os): string
     }
     if (strpos($os, 'mac') !== false || strpos($os, 'darwin') !== false) {
         return 'Mac OS';
+    }
+    if (strpos($os, 'ios') !== false || strpos($os, 'iphone') !== false || strpos($os, 'ipad') !== false) {
+        return 'iOS';
     }
     if (strpos($os, 'android') !== false) {
         return 'Android';

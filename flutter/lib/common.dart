@@ -1692,6 +1692,7 @@ Widget getPlatformImage(String platform, {double size = 50}) {
     kPeerPlatformMacOS => 'mac',
     kPeerPlatformLinux => 'linux',
     kPeerPlatformAndroid => 'android',
+    kPeerPlatformIOS => 'ios',
     _ => '',
   };
   if (assetName.isEmpty) {
