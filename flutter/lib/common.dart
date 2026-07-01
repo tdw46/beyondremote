@@ -2593,6 +2593,14 @@ connect(BuildContext context, String id,
   id = id.replaceAll(' ', '');
   await gFFI.userModel
       .refreshServerConfigFromAccount(force: true, refreshModels: false);
+  if (!id.contains('@') && gFFI.userModel.isLogin) {
+    final idServer =
+        (await bind.mainGetOption(key: 'custom-rendezvous-server')).trim();
+    if (idServer.isEmpty) {
+      showToast(translate('Self-hosted server settings are not ready'));
+      return;
+    }
+  }
   final oldId = id;
   id = await bind.mainHandleRelayId(id: id);
   forceRelay = id != oldId || forceRelay;

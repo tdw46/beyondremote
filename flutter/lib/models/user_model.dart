@@ -255,20 +255,20 @@ class UserModel {
     return loginResponse;
   }
 
-  Future<void> refreshServerConfigFromAccount(
+  Future<bool> refreshServerConfigFromAccount(
       {bool force = false, bool refreshModels = true}) async {
-    if (bind.isDisableAccount()) return;
-    if (accountServerConfigRefreshAttempted && !force) return;
-    if (refreshingAccountServerConfig) return;
+    if (bind.isDisableAccount()) return false;
+    if (accountServerConfigRefreshAttempted && !force) return false;
+    if (refreshingAccountServerConfig) return false;
 
     final token = bind.mainGetLocalOption(key: 'access_token');
-    if (token.isEmpty) return;
+    if (token.isEmpty) return false;
 
     accountServerConfigRefreshAttempted = true;
     refreshingAccountServerConfig = true;
     try {
       final url = await bind.mainGetApiServer();
-      if (url.trim().isEmpty) return;
+      if (url.trim().isEmpty) return false;
       final modifiedAt = force
           ? 0
           : int.tryParse(bind.mainGetLocalOption(key: 'strategy_timestamp')) ??
@@ -286,11 +286,11 @@ class UserModel {
       if (response.statusCode != 200) {
         debugPrint(
             'refreshServerConfigFromAccount: HTTP ${response.statusCode}');
-        return;
+        return false;
       }
 
       final data = jsonDecode(decode_http_response(response));
-      if (data is! Map<String, dynamic>) return;
+      if (data is! Map<String, dynamic>) return false;
       final rspModifiedAt = data['modified_at'];
       if (rspModifiedAt != null) {
         await bind.mainSetLocalOption(
@@ -298,38 +298,22 @@ class UserModel {
       }
 
       final strategy = data['strategy'];
-      if (strategy is! Map<String, dynamic>) return;
+      if (strategy is! Map<String, dynamic>) return false;
       final configOptions = strategy['config_options'];
       if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
-        return;
+        return false;
       }
-
-      final options = <String, String>{};
-      try {
-        final current = jsonDecode(await bind.mainGetOptions());
-        if (current is Map<String, dynamic>) {
-          current.forEach((key, value) {
-            options[key] = value?.toString() ?? '';
-          });
-        }
-      } catch (e) {
-        debugPrint('refreshServerConfigFromAccount: bad local options: $e');
+      for (final entry in configOptions.entries) {
+        await bind.mainSetOption(
+            key: entry.key.toString(), value: entry.value?.toString() ?? '');
       }
-      configOptions.forEach((key, value) {
-        final optionKey = key.toString();
-        final optionValue = value?.toString() ?? '';
-        if (optionValue.isEmpty) {
-          options.remove(optionKey);
-        } else {
-          options[optionKey] = optionValue;
-        }
-      });
-      await bind.mainSetOptions(json: jsonEncode(options));
       if (force && refreshModels) {
         await updateOtherModels(quiet: true);
       }
+      return true;
     } catch (e) {
       debugPrint('refreshServerConfigFromAccount failed: $e');
+      return false;
     } finally {
       refreshingAccountServerConfig = false;
     }
