@@ -63,6 +63,9 @@ pub const PLATFORM_ANDROID: &str = "Android";
 pub const TIMER_OUT: Duration = Duration::from_secs(1);
 pub const DEFAULT_KEEP_ALIVE: i32 = 60_000;
 pub const DEFAULT_ACCOUNT_API_SERVER: &str = "https://api.beyondstudios.us";
+pub const DEFAULT_RENDEZVOUS_SERVER: &str = "47.203.39.150:21116";
+pub const DEFAULT_RELAY_SERVER: &str = "47.203.39.150:21117";
+pub const DEFAULT_RENDEZVOUS_KEY: &str = "N8bYBNzpnFyMp1QnFZI6hmfinbXSyc06zj7+C0075rA=";
 
 const MIN_VER_MULTI_UI_SESSION: &str = "1.2.4";
 
@@ -142,6 +145,17 @@ fn set_beyond_remote_defaults() {
     if app_name.eq("RustDesk") {
         *app_name = "BeyondRemote".to_owned();
     }
+    let mut settings = hbb_common::config::DEFAULT_SETTINGS.write().unwrap();
+    settings.insert(
+        "custom-rendezvous-server".to_owned(),
+        DEFAULT_RENDEZVOUS_SERVER.to_owned(),
+    );
+    settings.insert("relay-server".to_owned(), DEFAULT_RELAY_SERVER.to_owned());
+    settings.insert("key".to_owned(), DEFAULT_RENDEZVOUS_KEY.to_owned());
+    settings.insert(
+        "api-server".to_owned(),
+        DEFAULT_ACCOUNT_API_SERVER.to_owned(),
+    );
 }
 
 pub fn global_clean() {
