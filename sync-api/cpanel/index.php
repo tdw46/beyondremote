@@ -872,6 +872,7 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     if (empty($deviceInfo)) {
         $deviceInfo = latest_auth_device_info($userId, $remoteId);
     }
+    $deviceInfo = sanitize_device_info($deviceInfo);
     $deviceName = (string)($deviceInfo['name'] ?? '');
     $stmt = db()->prepare('
         INSERT INTO br_devices (user_id, remote_id, uuid, device_info, last_seen_at)
@@ -901,6 +902,21 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
     ];
     upsert_peer($userId, $peer, true);
     ensure_tag($userId, 'My devices', tag_color('My devices'));
+}
+
+function sanitize_device_info(array $deviceInfo): array
+{
+    $managedRunning = ($deviceInfo['managed_server_running'] ?? false) === true;
+    $managedHost = trim((string)($deviceInfo['managed_server_public_host'] ?? ''));
+    $managedKey = trim((string)($deviceInfo['managed_server_key'] ?? ''));
+    if (!$managedRunning || $managedHost === '' || $managedKey === '') {
+        unset(
+            $deviceInfo['managed_server_running'],
+            $deviceInfo['managed_server_public_host'],
+            $deviceInfo['managed_server_key']
+        );
+    }
+    return $deviceInfo;
 }
 
 function registered_device_exists(int $userId, string $remoteId): bool
@@ -1105,6 +1121,7 @@ function latest_managed_server_info(int $userId): array
         FROM br_devices
         WHERE user_id = ?
             AND COALESCE(device_info->>'managed_server_public_host', '') <> ''
+            AND COALESCE(device_info->>'managed_server_running', 'false') = 'true'
         ORDER BY last_seen_at DESC
         LIMIT 1
     ");

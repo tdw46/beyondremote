@@ -69,6 +69,19 @@ pub fn public_key() -> String {
     read_key().unwrap_or_default()
 }
 
+pub fn account_server_info() -> Option<(String, String)> {
+    if Config::get_option(OPT_ENABLED) != "Y" || !is_running() {
+        return None;
+    }
+    let host = public_host();
+    let key = public_key();
+    if host.is_empty() || key.is_empty() {
+        None
+    } else {
+        Some((host, key))
+    }
+}
+
 pub fn start_if_enabled() {
     if Config::get_option(OPT_ENABLED) != "Y" {
         return;

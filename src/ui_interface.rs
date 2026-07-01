@@ -54,7 +54,10 @@ pub struct LoginDeviceInfo {
     pub r#type: String,
     pub name: String,
     pub local_ips: Vec<String>,
+    pub managed_server_running: bool,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub managed_server_public_host: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub managed_server_key: String,
 }
 
@@ -1323,14 +1326,20 @@ pub fn get_fingerprint() -> String {
 
 #[inline]
 pub fn get_login_device_info() -> LoginDeviceInfo {
+    let managed_server_info = crate::managed_server::account_server_info();
+    let managed_server_running = managed_server_info.is_some();
     LoginDeviceInfo {
         // std::env::consts::OS is better than whoami::platform() here.
         os: std::env::consts::OS.to_owned(),
         r#type: "client".to_owned(),
         name: crate::common::hostname(),
         local_ips: local_ipv4s(),
-        managed_server_public_host: Config::get_option("managed-server-public-host"),
-        managed_server_key: crate::managed_server::public_key(),
+        managed_server_running,
+        managed_server_public_host: managed_server_info
+            .as_ref()
+            .map(|(host, _)| host.clone())
+            .unwrap_or_default(),
+        managed_server_key: managed_server_info.map(|(_, key)| key).unwrap_or_default(),
     }
 }
 
