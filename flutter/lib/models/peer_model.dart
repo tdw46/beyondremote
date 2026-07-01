@@ -35,6 +35,13 @@ String normalizePeerPlatform(dynamic value) {
   }
 }
 
+List<String> _stringList(dynamic value) {
+  if (value is! List) {
+    return [];
+  }
+  return value.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+}
+
 class Peer {
   final String id;
   String hash; // personal ab hash password
@@ -52,6 +59,8 @@ class Peer {
   String device_group_name;
   String note;
   bool? sameServer;
+  List<String> localIps;
+  String managedServerPublicHost;
 
   String getId() {
     if (alias != '') {
@@ -75,7 +84,12 @@ class Peer {
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         note = json['note'] is String ? json['note'] : '',
-        sameServer = json['same_server'];
+        sameServer = json['same_server'],
+        localIps = _stringList(json['local_ips'] ?? json['info']?['local_ips']),
+        managedServerPublicHost = (json['managed_server_public_host'] ??
+                json['info']?['managed_server_public_host'] ??
+                '')
+            .toString();
 
   Map<String, dynamic> toJson() {
     return <String, dynamic>{
@@ -94,6 +108,8 @@ class Peer {
       'device_group_name': device_group_name,
       'note': note,
       'same_server': sameServer,
+      'local_ips': localIps,
+      'managed_server_public_host': managedServerPublicHost,
     };
   }
 
@@ -139,6 +155,8 @@ class Peer {
     required this.device_group_name,
     required this.note,
     this.sameServer,
+    this.localIps = const [],
+    this.managedServerPublicHost = '',
   });
 
   Peer.loading()
@@ -168,6 +186,8 @@ class Peer {
         alias == other.alias &&
         tags.equals(other.tags) &&
         forceAlwaysRelay == other.forceAlwaysRelay &&
+        localIps.equals(other.localIps) &&
+        managedServerPublicHost == other.managedServerPublicHost &&
         rdpPort == other.rdpPort &&
         rdpUsername == other.rdpUsername &&
         device_group_name == other.device_group_name &&

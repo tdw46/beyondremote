@@ -44,6 +44,11 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   double get em => 14.0;
   double? get height => bind.isIncomingOnly() ? null : em * 3;
 
+  Future<void> _publishManagedServerConfig() async {
+    await gFFI.userModel
+        .refreshServerConfigFromAccount(force: true, refreshModels: false);
+  }
+
   void onUsePublicServerGuide() {
     DesktopSettingPage.switch2page(SettingsTabKey.network);
   }
@@ -85,6 +90,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
                         key: 'managed-server-start',
                         value: _managedServerPublicHost);
                     await updateStatus();
+                    await _publishManagedServerConfig();
                   },
                   child: Text('Start self-hosted server',
                       style: TextStyle(
@@ -103,6 +109,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
                         key: 'managed-server-start',
                         value: _managedServerPublicHost);
                     await updateStatus();
+                    await _publishManagedServerConfig();
                   },
                   child: Text('Restart server',
                       style: TextStyle(

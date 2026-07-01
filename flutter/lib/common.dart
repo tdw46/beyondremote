@@ -2591,6 +2591,8 @@ connect(BuildContext context, String id,
     } catch (_) {}
   }
   id = id.replaceAll(' ', '');
+  await gFFI.userModel
+      .refreshServerConfigFromAccount(force: true, refreshModels: false);
   final oldId = id;
   id = await bind.mainHandleRelayId(id: id);
   forceRelay = id != oldId || forceRelay;

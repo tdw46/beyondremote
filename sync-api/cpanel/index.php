@@ -292,13 +292,14 @@ function heartbeat(): void
 {
     $user = require_user();
     $body = json_body();
-    register_device_from_body((int)$user['id'], $body);
+    $userId = (int)$user['id'];
+    register_device_from_body($userId, $body);
     $modifiedAt = (int)($body['modified_at'] ?? 0);
-    $serverModifiedAt = strategy_modified_at();
+    $serverModifiedAt = strategy_modified_at($userId);
     $response = ['modified_at' => $serverModifiedAt];
     if ($modifiedAt !== $serverModifiedAt) {
         $response['strategy'] = [
-            'config_options' => strategy_config_options(),
+            'config_options' => strategy_config_options($userId),
         ];
     }
     send_json($response);
@@ -894,6 +895,7 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
         'same_server' => true,
         'local_ips' => $deviceInfo['local_ips'] ?? [],
         'managed_server_public_host' => (string)($deviceInfo['managed_server_public_host'] ?? ''),
+        'managed_server_key' => (string)($deviceInfo['managed_server_key'] ?? ''),
     ];
     upsert_peer($userId, $peer, true);
     ensure_tag($userId, 'My devices', tag_color('My devices'));
@@ -1045,7 +1047,7 @@ function repair_peer_device_fields(int $userId, array $peer): array
     return $peer;
 }
 
-function strategy_config_options(): array
+function strategy_config_options(?int $userId = null): array
 {
     $config = config();
     $options = [];
@@ -1055,6 +1057,22 @@ function strategy_config_options(): array
         $options = $config['strategy']['config_options'];
     }
 
+    if ($userId !== null) {
+        $managed = latest_managed_server_info($userId);
+        $host = trim((string)($managed['managed_server_public_host'] ?? ''));
+        if ($host !== '') {
+            $options['custom-rendezvous-server'] = server_with_port($host, 21116);
+            $options['relay-server'] = server_with_port($host, 21117);
+            $options['api-server'] = (string)($config['api_base_url'] ?? ($options['api-server'] ?? ''));
+            $key = trim((string)($managed['managed_server_key'] ?? ''));
+            if ($key !== '') {
+                $options['key'] = $key;
+            } elseif (($options['key'] ?? '') === '') {
+                unset($options['key']);
+            }
+        }
+    }
+
     $out = [];
     foreach ($options as $key => $value) {
         $out[(string)$key] = (string)$value;
@@ -1062,9 +1080,12 @@ function strategy_config_options(): array
     return $out;
 }
 
-function strategy_modified_at(): int
+function strategy_modified_at(?int $userId = null): int
 {
     $config = config();
+    if ($userId !== null) {
+        return crc32(json_encode(strategy_config_options($userId)));
+    }
     if (isset($config['strategy_modified_at'])) {
         return (int)$config['strategy_modified_at'];
     }
@@ -1073,6 +1094,30 @@ function strategy_modified_at(): int
     }
     $options = strategy_config_options();
     return empty($options) ? 0 : crc32(json_encode($options));
+}
+
+function latest_managed_server_info(int $userId): array
+{
+    $stmt = db()->prepare("
+        SELECT device_info
+        FROM br_devices
+        WHERE user_id = ?
+            AND COALESCE(device_info->>'managed_server_public_host', '') <> ''
+        ORDER BY last_seen_at DESC
+        LIMIT 1
+    ");
+    $stmt->execute([$userId]);
+    $row = $stmt->fetch();
+    return $row ? (json_decode((string)$row['device_info'], true) ?: []) : [];
+}
+
+function server_with_port(string $host, int $port): string
+{
+    $host = trim($host);
+    if ($host === '' || strpos($host, ':') !== false) {
+        return $host;
+    }
+    return $host . ':' . $port;
 }
 
 function find_auth_request(string $code): ?array

@@ -159,6 +159,8 @@ class UserModel {
     if (refreshingOtherModels) return;
     refreshingOtherModels = true;
     try {
+      await gFFI.userModel
+          .refreshServerConfigFromAccount(force: true, refreshModels: false);
       await gFFI.groupModel.pull(force: true, quiet: quiet);
       await gFFI.abModel
           .pullAb(force: ForcePullAb.listAndCurrent, quiet: quiet);
@@ -253,8 +255,9 @@ class UserModel {
     return loginResponse;
   }
 
-  Future<void> refreshServerConfigFromAccount({bool force = false}) async {
-    if (!isMobile || bind.isDisableAccount()) return;
+  Future<void> refreshServerConfigFromAccount(
+      {bool force = false, bool refreshModels = true}) async {
+    if (bind.isDisableAccount()) return;
     if (accountServerConfigRefreshAttempted && !force) return;
     if (refreshingAccountServerConfig) return;
 
@@ -322,7 +325,7 @@ class UserModel {
         }
       });
       await bind.mainSetOptions(json: jsonEncode(options));
-      if (force) {
+      if (force && refreshModels) {
         await updateOtherModels(quiet: true);
       }
     } catch (e) {

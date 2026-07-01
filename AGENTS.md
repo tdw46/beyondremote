@@ -68,6 +68,8 @@
   Dart files, then `flutter analyze` on the same changed files.
 * For Rust edits, run `rustfmt --check` on changed Rust files. Prefer a targeted
   `cargo check` for the edited crate or feature set when local toolchains allow.
+  On this machine, use `rustfmt --edition 2021 --check <changed Rust files>`
+  for file-level checks because bare `rustfmt` defaults to Rust 2015.
 * Always run `git diff --check` before committing.
 * Treat analyzer warnings and errors as actionable. Existing info-level lint
   noise may be reported without blocking if unrelated to the change.
@@ -90,6 +92,10 @@
   app bundle for device install.
 * If CocoaPods fails with `uninitialized constant ... Logger` on macOS, run
   Flutter/CocoaPods commands with `RUBYOPT=-rlogger`.
+* For this machine's local macOS install build, use:
+  `RUBYOPT=-rlogger VCPKG_ROOT=/Users/tylerwalker/vcpkg ./build.py --flutter --unix-file-copy-paste`.
+  Skip `--hwcodec` locally unless its extra build environment is configured;
+  CI can still build workflow artifacts with `--hwcodec`.
 * Local macOS builds can rewrite only `flutter/macos/Podfile.lock` plugin
   checksums. Treat that as generated CocoaPods churn and do not commit it
   unless dependencies actually changed.

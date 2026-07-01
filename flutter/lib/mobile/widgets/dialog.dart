@@ -12,6 +12,11 @@ void _showSuccess() {
   showToast(translate("Successful"));
 }
 
+Future<void> _publishManagedServerConfig() async {
+  await gFFI.userModel
+      .refreshServerConfigFromAccount(force: true, refreshModels: false);
+}
+
 void setTemporaryPasswordLengthDialog(
     OverlayDialogManager dialogManager) async {
   List<String> lengths = ['6', '8', '10'];
@@ -236,6 +241,7 @@ void showServerSettingsWithValue(
                                 value: managedPublicHostCtrl.text.trim());
                             await refreshManagedStatusFor(
                                 Duration(seconds: 90));
+                            await _publishManagedServerConfig();
                           },
                   )
                 else if (running)
@@ -268,6 +274,7 @@ void showServerSettingsWithValue(
                                 key: 'managed-server-start',
                                 value: managedPublicHostCtrl.text.trim());
                             await refreshManagedStatusFor(Duration(seconds: 8));
+                            await _publishManagedServerConfig();
                           },
                   ),
               ],

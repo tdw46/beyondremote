@@ -55,6 +55,7 @@ pub struct LoginDeviceInfo {
     pub name: String,
     pub local_ips: Vec<String>,
     pub managed_server_public_host: String,
+    pub managed_server_key: String,
 }
 
 lazy_static::lazy_static! {
@@ -1329,6 +1330,7 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
         name: crate::common::hostname(),
         local_ips: local_ipv4s(),
         managed_server_public_host: Config::get_option("managed-server-public-host"),
+        managed_server_key: crate::managed_server::public_key(),
     }
 }
 

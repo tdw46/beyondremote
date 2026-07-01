@@ -65,6 +65,10 @@ pub fn status_json() -> String {
     serde_json::to_string(&status()).unwrap_or_default()
 }
 
+pub fn public_key() -> String {
+    read_key().unwrap_or_default()
+}
+
 pub fn start_if_enabled() {
     if Config::get_option(OPT_ENABLED) != "Y" {
         return;
