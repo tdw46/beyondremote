@@ -169,13 +169,13 @@ class ColorThemeExtension extends ThemeExtension<ColorThemeExtension> {
   final Color? divider;
 
   static final light = ColorThemeExtension(
-    border: Color(0xFFCCCCCC),
-    border2: Color(0xFFBBBBBB),
+    border: Color(0x66CCCCCC),
+    border2: Color(0x99BBBBBB),
     border3: Colors.black26,
-    highlight: Color(0xFFE5E5E5),
+    highlight: Color(0x99FFFFFF),
     drag_indicator: Colors.grey[800],
     shadow: Colors.black,
-    errorBannerBg: Color(0xFFFDEEEB),
+    errorBannerBg: Color(0xEAFDEEEB),
     me: Colors.green,
     toastBg: Colors.black.withOpacity(0.6),
     toastText: Colors.white,
@@ -183,13 +183,13 @@ class ColorThemeExtension extends ThemeExtension<ColorThemeExtension> {
   );
 
   static final dark = ColorThemeExtension(
-    border: Color(0xFF555555),
-    border2: Color(0xFFE5E5E5),
+    border: Color(0x66555555),
+    border2: Color(0x99E5E5E5),
     border3: Colors.white24,
-    highlight: Color(0xFF3F3F3F),
+    highlight: Color(0x663F3F3F),
     drag_indicator: Colors.grey,
     shadow: Colors.grey,
-    errorBannerBg: Color(0xFF470F2D),
+    errorBannerBg: Color(0xEA470F2D),
     me: Colors.greenAccent,
     toastBg: Colors.white.withOpacity(0.6),
     toastText: Colors.black,
@@ -251,6 +251,10 @@ class MyTheme {
   MyTheme._();
 
   static const Color grayBg = Color(0xFFEFEFF2);
+  static const Color glassLightBg = Color(0x55F7F8FB);
+  static const Color glassLightSurface = Color(0x88FFFFFF);
+  static const Color glassDarkBg = Color(0x401A1B20);
+  static const Color glassDarkSurface = Color(0x6624252B);
   static const Color accent = Color(0xFF0071FF);
   static const Color accent50 = Color(0x770071FF);
   static const Color accent80 = Color(0xAA0071FF);
@@ -375,9 +379,9 @@ class MyTheme {
     // https://stackoverflow.com/questions/77537315/after-upgrading-to-flutter-3-16-the-app-bar-background-color-button-size-and
     useMaterial3: false,
     brightness: Brightness.light,
-    hoverColor: Color.fromARGB(255, 224, 224, 224),
-    scaffoldBackgroundColor: Colors.white,
-    dialogBackgroundColor: Colors.white,
+    hoverColor: Color(0x66E0E0E0),
+    scaffoldBackgroundColor: isDesktop ? Colors.transparent : glassLightBg,
+    dialogBackgroundColor: glassLightSurface,
     appBarTheme: AppBarTheme(
       shadowColor: Colors.transparent,
     ),
@@ -394,7 +398,7 @@ class MyTheme {
     scrollbarTheme: scrollbarTheme,
     inputDecorationTheme: isDesktop
         ? InputDecorationTheme(
-            fillColor: grayBg,
+            fillColor: glassLightSurface,
             filled: true,
             isDense: true,
             border: OutlineInputBorder(
@@ -409,7 +413,7 @@ class MyTheme {
         bodyMedium:
             TextStyle(fontSize: 14, color: Colors.black87, height: 1.25),
         labelLarge: TextStyle(fontSize: 16.0, color: MyTheme.accent80)),
-    cardColor: grayBg,
+    cardColor: glassLightSurface,
     hintColor: Color(0xFFAAAAAA),
     visualDensity: VisualDensity.adaptivePlatformDensity,
     tabBarTheme: const TabBarTheme(
@@ -451,16 +455,19 @@ class MyTheme {
     checkboxTheme: checkboxTheme,
     listTileTheme: listTileTheme,
     menuBarTheme: MenuBarThemeData(
-        style:
-            MenuStyle(backgroundColor: MaterialStatePropertyAll(Colors.white))),
+        style: MenuStyle(
+            backgroundColor: MaterialStatePropertyAll(glassLightSurface))),
     colorScheme: ColorScheme.light(
-        primary: Colors.blue, secondary: accent, background: grayBg),
+        primary: Colors.blue,
+        secondary: accent,
+        background: isDesktop ? Colors.transparent : glassLightBg,
+        surface: glassLightSurface),
     popupMenuTheme: PopupMenuThemeData(
-        color: Colors.white,
+        color: glassLightSurface,
         shape: RoundedRectangleBorder(
           side: BorderSide(
               color: (isDesktop || isWebDesktop)
-                  ? Color(0xFFECECEC)
+                  ? Color(0x99ECECEC)
                   : Colors.transparent),
           borderRadius: BorderRadius.all(Radius.circular(8.0)),
         )),
@@ -473,9 +480,9 @@ class MyTheme {
   static ThemeData darkTheme = ThemeData(
     useMaterial3: false,
     brightness: Brightness.dark,
-    hoverColor: Color.fromARGB(255, 45, 46, 53),
-    scaffoldBackgroundColor: Color(0xFF18191E),
-    dialogBackgroundColor: Color(0xFF18191E),
+    hoverColor: Color(0x662D2E35),
+    scaffoldBackgroundColor: isDesktop ? Colors.transparent : glassDarkBg,
+    dialogBackgroundColor: glassDarkSurface,
     appBarTheme: AppBarTheme(
       shadowColor: Colors.transparent,
     ),
@@ -485,14 +492,14 @@ class MyTheme {
         borderRadius: BorderRadius.circular(18.0),
         side: BorderSide(
           width: 1,
-          color: Color(0xFF24252B),
+          color: glassDarkSurface,
         ),
       ),
     ),
     scrollbarTheme: scrollbarThemeDark,
     inputDecorationTheme: (isDesktop || isWebDesktop)
         ? InputDecorationTheme(
-            fillColor: Color(0xFF24252B),
+            fillColor: glassDarkSurface,
             filled: true,
             isDense: true,
             border: OutlineInputBorder(
@@ -511,7 +518,7 @@ class MyTheme {
         color: accent80,
       ),
     ),
-    cardColor: Color(0xFF24252B),
+    cardColor: glassDarkSurface,
     visualDensity: VisualDensity.adaptivePlatformDensity,
     tabBarTheme: const TabBarTheme(
       labelColor: Colors.white70,
@@ -545,7 +552,7 @@ class MyTheme {
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        backgroundColor: Color(0xFF24252B),
+        backgroundColor: glassDarkSurface,
         side: BorderSide(color: Colors.white12, width: 0.5),
         disabledForegroundColor: Colors.white70,
         foregroundColor: Colors.white70,
@@ -560,11 +567,12 @@ class MyTheme {
     listTileTheme: listTileTheme,
     menuBarTheme: MenuBarThemeData(
         style: MenuStyle(
-            backgroundColor: MaterialStatePropertyAll(Color(0xFF121212)))),
+            backgroundColor: MaterialStatePropertyAll(glassDarkSurface))),
     colorScheme: ColorScheme.dark(
       primary: Colors.blue,
       secondary: accent,
-      background: Color(0xFF24252B),
+      background: isDesktop ? Colors.transparent : glassDarkBg,
+      surface: glassDarkSurface,
     ),
     popupMenuTheme: PopupMenuThemeData(
         shape: RoundedRectangleBorder(
@@ -3043,6 +3051,9 @@ String getWindowNameWithId(String id, {WindowType? overrideType}) {
 Future<void> updateSystemWindowTheme() async {
   // Set system window theme for macOS.
   final userPreference = MyTheme.getThemeModePreference();
+  final effectiveTheme = MyTheme.currentThemeMode();
+  await RdPlatformChannel.instance
+      .applyDesktopGlass(dark: effectiveTheme == ThemeMode.dark);
   if (userPreference != ThemeMode.system) {
     if (isMacOS) {
       await RdPlatformChannel.instance.changeSystemWindowTheme(

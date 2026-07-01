@@ -19,6 +19,83 @@
 
 #include "win32_desktop.h"
 
+namespace {
+
+constexpr DWORD kDwmUseImmersiveDarkMode = 20;
+constexpr DWORD kDwmSystemBackdropType = 38;
+constexpr DWORD kDwmWindowCornerPreference = 33;
+
+bool GetBoolArgument(const flutter::MethodCall<>& call, const char* key, bool fallback) {
+  const auto* arguments = call.arguments();
+  if (arguments == nullptr || !std::holds_alternative<flutter::EncodableMap>(*arguments)) {
+    return fallback;
+  }
+  const auto& args = std::get<flutter::EncodableMap>(*arguments);
+  auto it = args.find(flutter::EncodableValue(key));
+  if (it == args.end()) {
+    return fallback;
+  }
+  if (std::holds_alternative<bool>(it->second)) {
+    return std::get<bool>(it->second);
+  }
+  return fallback;
+}
+
+void ApplyGlassEffect(HWND hwnd, bool dark) {
+  if (hwnd == nullptr) {
+    return;
+  }
+
+  bool backdrop_applied = false;
+  if (HMODULE dwm = LoadLibraryW(L"dwmapi.dll")) {
+    using DwmSetWindowAttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+    auto set_dwm_attribute = reinterpret_cast<DwmSetWindowAttributeFn>(
+        GetProcAddress(dwm, "DwmSetWindowAttribute"));
+    if (set_dwm_attribute) {
+      BOOL dark_mode = dark ? TRUE : FALSE;
+      set_dwm_attribute(hwnd, kDwmUseImmersiveDarkMode, &dark_mode, sizeof(dark_mode));
+      const DWORD rounded = 2;
+      set_dwm_attribute(hwnd, kDwmWindowCornerPreference, &rounded, sizeof(rounded));
+      const DWORD main_backdrop = 2;
+      backdrop_applied = SUCCEEDED(set_dwm_attribute(
+          hwnd, kDwmSystemBackdropType, &main_backdrop, sizeof(main_backdrop)));
+    }
+    FreeLibrary(dwm);
+  }
+
+  HMODULE user32 = backdrop_applied ? nullptr : GetModuleHandleW(L"user32.dll");
+  if (user32) {
+    enum AccentState {
+      ACCENT_DISABLED = 0,
+      ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
+    };
+    struct AccentPolicy {
+      int accent_state;
+      int accent_flags;
+      DWORD gradient_color;
+      int animation_id;
+    };
+    struct WindowCompositionAttributeData {
+      int attribute;
+      PVOID data;
+      ULONG size_of_data;
+    };
+    using SetWindowCompositionAttributeFn =
+        BOOL(WINAPI*)(HWND, WindowCompositionAttributeData*);
+    auto set_window_composition_attribute =
+        reinterpret_cast<SetWindowCompositionAttributeFn>(
+            GetProcAddress(user32, "SetWindowCompositionAttribute"));
+    if (set_window_composition_attribute) {
+      const DWORD tint = dark ? 0x66202020 : 0x66FFFFFF;
+      AccentPolicy policy = {ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, tint, 0};
+      WindowCompositionAttributeData data = {19, &policy, sizeof(policy)};
+      set_window_composition_attribute(hwnd, &data);
+    }
+  }
+}
+
+}  // namespace
+
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
@@ -47,7 +124,7 @@ bool FlutterWindow::OnCreate() {
     &flutter::StandardMethodCodec::GetInstance());
 
   channel.SetMethodCallHandler(
-    [](const flutter::MethodCall<>& call, std::unique_ptr<flutter::MethodResult<>> result) {
+    [this](const flutter::MethodCall<>& call, std::unique_ptr<flutter::MethodResult<>> result) {
       if (call.method_name() == "bumpMouse") {
         auto arguments = call.arguments();
 
@@ -79,6 +156,9 @@ bool FlutterWindow::OnCreate() {
         bool succeeded = Win32Desktop::BumpMouse(dx, dy);
 
         result->Success(succeeded);
+      } else if (call.method_name() == "setGlassEffect") {
+        ApplyGlassEffect(GetHandle(), GetBoolArgument(call, "dark", false));
+        result->Success(true);
       }
     });
 
@@ -92,6 +172,7 @@ bool FlutterWindow::OnCreate() {
         registry->GetRegistrarForPlugin("FlutterGpuTextureRendererPluginCApi"));
   });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
+  ApplyGlassEffect(GetHandle(), false);
   return true;
 }
 

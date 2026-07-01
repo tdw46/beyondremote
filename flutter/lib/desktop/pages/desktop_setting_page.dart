@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -277,7 +278,7 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.background,
+      backgroundColor: Colors.transparent,
       body: _buildBlock(
         children: <Widget>[
           SizedBox(
@@ -291,13 +292,10 @@ class _DesktopSettingPageState extends State<DesktopSettingPage>
           ),
           const VerticalDivider(width: 1),
           Expanded(
-            child: Container(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: PageView(
-                controller: controller,
-                physics: NeverScrollableScrollPhysics(),
-                children: _children(),
-              ),
+            child: PageView(
+              controller: controller,
+              physics: NeverScrollableScrollPhysics(),
+              children: _children(),
             ),
           )
         ],
@@ -2461,31 +2459,62 @@ Widget _Card(
     {required String title,
     required List<Widget> children,
     List<Widget>? title_suffix}) {
+  const radius = 28.0;
   return Row(
     children: [
       Flexible(
         child: SizedBox(
           width: _kCardFixedWidth,
-          child: Card(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                        child: Text(
-                      translate(title),
-                      textAlign: TextAlign.start,
-                      style: const TextStyle(
-                        fontSize: _kTitleFontSize,
+          child: Builder(
+            builder: (context) {
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final fill =
+                  isDark ? const Color(0x7A24252B) : const Color(0x99FFFFFF);
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(radius),
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: 0.45, sigmaY: 0.45),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: fill,
+                      borderRadius: BorderRadius.circular(radius),
+                      border: Border.all(
+                        color: (isDark ? Colors.white : Colors.black)
+                            .withOpacity(0.10),
+                        width: 1,
                       ),
-                    )),
-                    ...?title_suffix
-                  ],
-                ).marginOnly(left: _kContentHMargin, top: 10, bottom: 10),
-                ...children
-                    .map((e) => e.marginOnly(top: 4, right: _kContentHMargin)),
-              ],
-            ).marginOnly(bottom: 10),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(isDark ? 0.18 : 0.10),
+                          blurRadius: 18,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                                child: Text(
+                              translate(title),
+                              textAlign: TextAlign.start,
+                              style: const TextStyle(
+                                fontSize: _kTitleFontSize,
+                              ),
+                            )),
+                            ...?title_suffix
+                          ],
+                        ).marginOnly(
+                            left: _kContentHMargin, top: 10, bottom: 10),
+                        ...children.map((e) =>
+                            e.marginOnly(top: 4, right: _kContentHMargin)),
+                      ],
+                    ).marginOnly(bottom: 10),
+                  ),
+                ),
+              );
+            },
           ).marginOnly(left: _kCardLeftMargin, top: 15),
         ),
       ),

@@ -439,6 +439,7 @@ class _DesktopTabState extends State<DesktopTab>
       unawaited(windowManager.close());
       exit(0);
     }
+
     notMainWindowClose(WindowController windowController) async {
       if (controller.length != 0) {
         debugPrint("close not empty multiwindow from taskbar");
@@ -616,7 +617,9 @@ class _DesktopTabState extends State<DesktopTab>
                               .then((value) => stateGlobal.setMaximized(value));
                         }
                       }
-                    : (isIncomingHomePage ? () {} : null), // Keep tap recognizer for Windows touch.
+                    : (isIncomingHomePage
+                        ? () {}
+                        : null), // Keep tap recognizer for Windows touch.
                 onPanStart: (_) => startDragging(isMainWindow),
                 onPanCancel: () {
                   // We want to disable dragging of the tab area in the tab bar.
@@ -1468,9 +1471,9 @@ class TabbarTheme extends ThemeExtension<TabbarTheme> {
       unSelectedTextColor: Color.fromARGB(255, 112, 112, 112),
       selectedIconColor: Color.fromARGB(255, 26, 26, 26),
       unSelectedIconColor: Color.fromARGB(255, 96, 96, 96),
-      dividerColor: Color.fromARGB(255, 238, 238, 238),
+      dividerColor: Color(0x55EEEEEE),
       hoverColor: Colors.white54,
-      closeHoverColor: Colors.white,
+      closeHoverColor: Color(0xCCFFFFFF),
       selectedTabBackgroundColor: Colors.white54);
 
   static const dark = TabbarTheme(
@@ -1480,9 +1483,9 @@ class TabbarTheme extends ThemeExtension<TabbarTheme> {
       unSelectedTextColor: Color.fromARGB(255, 192, 192, 192),
       selectedIconColor: Color.fromARGB(255, 192, 192, 192),
       unSelectedIconColor: Color.fromARGB(255, 255, 255, 255),
-      dividerColor: Color.fromARGB(255, 64, 64, 64),
+      dividerColor: Color(0x55404040),
       hoverColor: Colors.black26,
-      closeHoverColor: Colors.black,
+      closeHoverColor: Color(0xCC000000),
       selectedTabBackgroundColor: Colors.black26);
 
   @override

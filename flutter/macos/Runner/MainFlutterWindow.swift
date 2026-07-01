@@ -36,12 +36,17 @@ class RelativeMouseState {
 }
 
 class MainFlutterWindow: NSWindow {
+    private var mainFlutterViewController: FlutterViewController?
+
     override func awakeFromNib() {
         rustdesk_core_main();
         let flutterViewController = FlutterViewController.init()
+        flutterViewController.backgroundColor = NSColor.clear
         let windowFrame = self.frame
+        mainFlutterViewController = flutterViewController
         self.contentViewController = flutterViewController
         self.setFrame(windowFrame, display: true)
+        configureGlassEffect(window: self, flutterView: flutterViewController.view, dark: effectiveDarkMode())
         // register self method handler
         let registrar = flutterViewController.registrar(forPlugin: "RustDeskPlugin")
         setMethodHandler(registrar: registrar)
@@ -49,6 +54,8 @@ class MainFlutterWindow: NSWindow {
         RegisterGeneratedPlugins(registry: flutterViewController)
 
         FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+            controller.backgroundColor = NSColor.clear
+            self.configureGlassEffect(window: controller.view.window, flutterView: controller.view, dark: self.effectiveDarkMode())
             // Register the plugin which you want access from other isolate.
             // DesktopLifecyclePlugin.register(with: controller.registrar(forPlugin: "DesktopLifecyclePlugin"))
             // Note: copy below from above RegisterGeneratedPlugins
@@ -78,6 +85,47 @@ class MainFlutterWindow: NSWindow {
     /// Override window theme.
     public func setWindowInterfaceMode(window: NSWindow, themeName: String) {
         window.appearance = NSAppearance(named: themeName == "light" ? .aqua : .darkAqua)
+    }
+
+    private func effectiveDarkMode() -> Bool {
+        if #available(macOS 10.14, *) {
+            let appearance = self.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua])
+            return appearance == .darkAqua
+        }
+        return false
+    }
+
+    private func configureGlassEffect(window: NSWindow?, flutterView: NSView?, dark: Bool) {
+        guard let window = window, let flutterView = flutterView else { return }
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.alphaValue = 0.82
+        window.titlebarAppearsTransparent = true
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+
+        configureVisualEffectFallback(window: window, flutterView: flutterView)
+
+        flutterView.wantsLayer = true
+        flutterView.layer?.isOpaque = false
+        flutterView.layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    private func configureVisualEffectFallback(window: NSWindow, flutterView: NSView) {
+        guard let contentView = window.contentView else { return }
+        let effectIdentifier = NSUserInterfaceItemIdentifier("BeyondRemoteGlassEffect")
+        let effectView: NSVisualEffectView
+        if let existing = contentView.subviews.first(where: { $0.identifier == effectIdentifier }) as? NSVisualEffectView {
+            effectView = existing
+        } else {
+            effectView = NSVisualEffectView(frame: contentView.bounds)
+            effectView.identifier = effectIdentifier
+            effectView.autoresizingMask = [.width, .height]
+            contentView.addSubview(effectView, positioned: .below, relativeTo: nil)
+        }
+        effectView.material = .underWindowBackground
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.isEmphasized = true
     }
 
     private func enableNativeRelativeMouseMode(channel: FlutterMethodChannel) -> Bool {
@@ -191,6 +239,13 @@ class MainFlutterWindow: NSWindow {
                         return
                     }
                     self.setWindowInterfaceMode(window: window,themeName: themeName ?? "light")
+                    self.configureGlassEffect(window: window, flutterView: registrar.view, dark: themeName != "light")
+                    result(nil)
+                    break;
+                case "setGlassEffect":
+                    let arg = call.arguments as? [String: Any]
+                    let dark = arg?["dark"] as? Bool ?? self.effectiveDarkMode()
+                    self.configureGlassEffect(window: registrar.view?.window, flutterView: registrar.view, dark: dark)
                     result(nil)
                     break;
                 case "terminate":

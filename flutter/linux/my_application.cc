@@ -26,6 +26,7 @@ void host_channel_call_handler(FlMethodChannel* channel, FlMethodCall* method_ca
 
 GtkWidget *find_gl_area(GtkWidget *widget);
 void try_set_transparent(GtkWindow* window, GdkScreen* screen, FlView* view);
+void apply_linux_glass(MyApplication* self, bool dark);
 
 extern bool gIsConnectionManager;
 
@@ -292,6 +293,51 @@ void host_channel_call_handler(FlMethodChannel* channel, FlMethodCall* method_ca
     }
 
     fl_value_unref(result_value);
+  } else if (strcmp(fl_method_call_get_name(method_call), "setGlassEffect") == 0) {
+    FlValue *args = fl_method_call_get_args(method_call);
+    bool dark = false;
+    if (args != nullptr && fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+      FlValue* dark_value = fl_value_lookup_string(args, "dark");
+      if (dark_value != nullptr && fl_value_get_type(dark_value) == FL_VALUE_TYPE_BOOL) {
+        dark = fl_value_get_bool(dark_value);
+      }
+    }
+    apply_linux_glass(MY_APPLICATION(user_data), dark);
+    FlValue *result_value = fl_value_new_bool(true);
+    GError *error = nullptr;
+    if (!fl_method_call_respond_success(method_call, result_value, &error)) {
+      g_warning("Failed to send Flutter Platform Channel response: %s", error->message);
+      g_error_free(error);
+    }
+    fl_value_unref(result_value);
+  }
+}
+
+void apply_linux_glass(MyApplication* self, bool dark)
+{
+  GList* windows = gtk_application_get_windows(GTK_APPLICATION(self));
+  for (GList* iter = windows; iter != nullptr; iter = g_list_next(iter)) {
+    GtkWindow* window = GTK_WINDOW(iter->data);
+    GdkScreen* screen = gtk_window_get_screen(window);
+    gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+    if (screen != nullptr) {
+      GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
+      if (visual != nullptr && gdk_screen_is_composited(screen)) {
+        gtk_widget_set_visual(GTK_WIDGET(window), visual);
+      }
+    }
+    gtk_widget_set_opacity(GTK_WIDGET(window), 1);
+
+    GtkCssProvider* provider = gtk_css_provider_new();
+    const gchar* css = dark
+      ? "window, headerbar { background-color: rgba(24, 25, 30, 0.48); }"
+      : "window, headerbar { background-color: rgba(247, 250, 255, 0.42); }";
+    gtk_css_provider_load_from_data(provider, css, -1, nullptr);
+    gtk_style_context_add_provider(
+      gtk_widget_get_style_context(GTK_WIDGET(window)),
+      GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
   }
 }
 

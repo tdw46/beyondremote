@@ -90,6 +90,9 @@
   app bundle for device install.
 * If CocoaPods fails with `uninitialized constant ... Logger` on macOS, run
   Flutter/CocoaPods commands with `RUBYOPT=-rlogger`.
+* Local macOS builds can rewrite only `flutter/macos/Podfile.lock` plugin
+  checksums. Treat that as generated CocoaPods churn and do not commit it
+  unless dependencies actually changed.
 
 ## Local Windows Install Notes
 

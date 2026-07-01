@@ -21,7 +21,7 @@ class RdPlatformChannel {
     // No debug output; this call is too chatty.
 
     bool? result = await _hostMethodChannel
-      .invokeMethod("bumpMouse", {"dx": dx, "dy": dy});
+        .invokeMethod("bumpMouse", {"dx": dx, "dy": dy});
 
     return result ?? false;
   }
@@ -35,6 +35,17 @@ class RdPlatformChannel {
     }
     return _hostMethodChannel
         .invokeMethod("setWindowTheme", {"themeName": theme.name});
+  }
+
+  Future<void> applyDesktopGlass({required bool dark}) async {
+    if (!isDesktop || isWeb) return;
+    try {
+      await _hostMethodChannel.invokeMethod("setGlassEffect", {"dark": dark});
+    } catch (e) {
+      if (kDebugMode) {
+        print("[Window ${kWindowId ?? 'Main'}] glass effect unavailable: $e");
+      }
+    }
   }
 
   /// Terminate .app manually.

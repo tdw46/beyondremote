@@ -188,7 +188,7 @@ class _PeerCardState extends State<_PeerCard>
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.background,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.only(
                 topRight: Radius.circular(_tileRadius),
                 bottomRight: Radius.circular(_tileRadius),
@@ -303,7 +303,7 @@ class _PeerCardState extends State<_PeerCard>
         ? peer.hostname
         : '${peer.username}${peer.username.isNotEmpty && peer.hostname.isNotEmpty ? '@' : ''}${peer.hostname}';
     final child = Card(
-      color: Colors.transparent,
+      color: Theme.of(context).cardColor,
       elevation: 0,
       margin: EdgeInsets.zero,
       // to-do: memory leak here, more investigation needed.
@@ -376,7 +376,7 @@ class _PeerCardState extends State<_PeerCard>
                   ),
                 ),
                 Container(
-                  color: Theme.of(context).colorScheme.background,
+                  color: Theme.of(context).cardColor,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1549,11 +1549,11 @@ Widget build_more(BuildContext context, {bool invert = false}) {
           radius: 14,
           backgroundColor: hover.value
               ? (invert
-                  ? Theme.of(context).colorScheme.background
+                  ? Theme.of(context).colorScheme.surface
                   : Theme.of(context).scaffoldBackgroundColor)
               : (invert
                   ? Theme.of(context).scaffoldBackgroundColor
-                  : Theme.of(context).colorScheme.background),
+                  : Theme.of(context).colorScheme.surface),
           child: Icon(Icons.more_vert,
               size: 18,
               color: hover.value
