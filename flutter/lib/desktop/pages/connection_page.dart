@@ -37,6 +37,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
   final _svcStopped = Get.find<RxBool>(tag: 'stop-service');
   final _svcIsUsingPublicServer = true.obs;
   final _managedServerNeedsStart = false.obs;
+  final _managedServerCanRestart = false.obs;
   String _managedServerPublicHost = '';
   Timer? _updateTimer;
 
@@ -77,7 +78,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
         );
 
     startManagedServerWidget() => Offstage(
-          offstage: !_managedServerNeedsStart.value,
+          offstage: !_managedServerNeedsStart.value || _showRestartServer,
           child: InkWell(
                   onTap: () async {
                     await bind.mainSetCommon(
@@ -86,6 +87,24 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
                     await updateStatus();
                   },
                   child: Text('Start self-hosted server',
+                      style: TextStyle(
+                          decoration: TextDecoration.underline, fontSize: em)))
+              .marginOnly(left: em),
+        );
+
+    restartManagedServerWidget() => Offstage(
+          offstage: !_showRestartServer,
+          child: InkWell(
+                  onTap: () async {
+                    await bind.mainSetCommon(
+                        key: 'managed-server-stop', value: '');
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    await bind.mainSetCommon(
+                        key: 'managed-server-start',
+                        value: _managedServerPublicHost);
+                    await updateStatus();
+                  },
+                  child: Text('Restart server',
                       style: TextStyle(
                           decoration: TextDecoration.underline, fontSize: em)))
               .marginOnly(left: em),
@@ -145,6 +164,7 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
             // stop
             if (!isIncomingOnly) startServiceWidget(),
             if (!isIncomingOnly) startManagedServerWidget(),
+            if (!isIncomingOnly) restartManagedServerWidget(),
             // ready && public
             // No need to show the guide if is custom client.
             if (!isIncomingOnly) setupServerWidget(),
@@ -175,11 +195,18 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
           : stateGlobal.svcStatus.value == SvcStatus.connecting
               ? translate("connecting_status")
               : stateGlobal.svcStatus.value == SvcStatus.notReady
-                  ? translate("not_ready_status")
+                  ? (_showRestartServer
+                      ? 'Self-hosted server needs a restart'
+                      : translate("not_ready_status"))
                   : translate('Ready'),
       style: TextStyle(fontSize: em),
     );
   }
+
+  bool get _showRestartServer =>
+      !_svcStopped.value &&
+      stateGlobal.svcStatus.value == SvcStatus.notReady &&
+      _managedServerCanRestart.value;
 
   updateStatus() async {
     final status =
@@ -214,9 +241,11 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
       final running = status['running'] == true;
       final installing = status['installing'] == true;
       _managedServerPublicHost = status['public_host']?.toString() ?? '';
+      _managedServerCanRestart.value = supportedRun && installed && !installing;
       _managedServerNeedsStart.value =
           supportedRun && installed && !running && !installing;
     } catch (_) {
+      _managedServerCanRestart.value = false;
       _managedServerNeedsStart.value = false;
     }
   }

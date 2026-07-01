@@ -91,6 +91,21 @@
 * If CocoaPods fails with `uninitialized constant ... Logger` on macOS, run
   Flutter/CocoaPods commands with `RUBYOPT=-rlogger`.
 
+## Local Windows Install Notes
+
+* For elevated installer scripts, do not block indefinitely on
+  `Start-Process -Verb RunAs -Wait`. Start the elevated script, poll its
+  transcript/log plus installed file hashes, and report success from those
+  checks.
+* For repeat elevated installs, prefer the native registered updater:
+  `scripts/windows/register-elevated-installer.ps1`,
+  `scripts/macos/register-elevated-installer.sh`, or
+  `scripts/linux/register-elevated-installer.sh`. Trigger by writing the bundle
+  path or update file path to the platform pending-update file, then poll the
+  platform elevated-update log plus installed file hashes. Pending/log roots:
+  `%PROGRAMDATA%\BeyondRemote`, `/Library/Application Support/BeyondRemote`,
+  `/var/lib/beyondremote`.
+
 ## Localization (`src/lang/*.rs`)
 
 Each file is a `HashMap<key, translation>`. Layout:

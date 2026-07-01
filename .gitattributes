@@ -1,1 +1,3 @@
 * text=auto
+scripts/macos/*.sh text eol=lf
+scripts/linux/*.sh text eol=lf

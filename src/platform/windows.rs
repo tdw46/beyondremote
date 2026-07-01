@@ -3641,6 +3641,9 @@ pub fn update_to(file: &str) -> ResultType<()> {
             // Clean up any residual staging directory from previous custom client
             allow_err!(remove_custom_client_staging_dir(&custom_client_staging_dir));
         }
+        if run_elevated_update_task(file)? {
+            return Ok(());
+        }
         if !run_uac(file, "--update")? {
             bail!(
                 "Failed to run the update exe with UAC, error: {:?}",
@@ -3656,6 +3659,42 @@ pub fn update_to(file: &str) -> ResultType<()> {
         bail!("Unsupported update file format: {}", file);
     }
     Ok(())
+}
+
+fn run_elevated_update_task(file: &str) -> ResultType<bool> {
+    let program_data = match std::env::var("PROGRAMDATA") {
+        Ok(v) => v,
+        Err(_) => return Ok(false),
+    };
+    let app_name = crate::get_app_name();
+    let dir = PathBuf::from(program_data).join(&app_name);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        log::debug!("Failed to create elevated update task dir: {}", e);
+        return Ok(false);
+    }
+    if let Err(e) = std::fs::write(dir.join("pending-update.txt"), file) {
+        log::debug!("Failed to write elevated update marker: {}", e);
+        return Ok(false);
+    }
+    let task_name = format!("{} Elevated Installer", app_name);
+    let status = std::process::Command::new("schtasks")
+        .args(["/Run", "/TN", &task_name])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status();
+    match status {
+        Ok(s) if s.success() => {
+            log::info!("Launched elevated update task {}", task_name);
+            Ok(true)
+        }
+        Ok(s) => {
+            log::debug!("Elevated update task exited with {}", s);
+            Ok(false)
+        }
+        Err(e) => {
+            log::debug!("Failed to launch elevated update task: {}", e);
+            Ok(false)
+        }
+    }
 }
 
 // Don't launch tray app when running with `\qn`.
