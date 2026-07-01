@@ -303,9 +303,12 @@ class UserModel {
       if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
         return false;
       }
+      final localManagedConfig = await _localManagedServerConfig();
       for (final entry in configOptions.entries) {
+        final key = entry.key.toString();
+        final localValue = localManagedConfig[key];
         await bind.mainSetOption(
-            key: entry.key.toString(), value: entry.value?.toString() ?? '');
+            key: key, value: localValue ?? entry.value?.toString() ?? '');
       }
       if (force && refreshModels) {
         await updateOtherModels(quiet: true);
@@ -316,6 +319,25 @@ class UserModel {
       return false;
     } finally {
       refreshingAccountServerConfig = false;
+    }
+  }
+
+  Future<Map<String, String>> _localManagedServerConfig() async {
+    try {
+      final raw = await bind.mainGetCommon(key: 'managed-server-status');
+      final status = jsonDecode(raw);
+      if (status is! Map<String, dynamic> ||
+          status['enabled'] != true ||
+          status['running'] != true ||
+          (status['public_host']?.toString().trim().isEmpty ?? true)) {
+        return {};
+      }
+      return {
+        'custom-rendezvous-server': '127.0.0.1:21116',
+        'relay-server': '127.0.0.1:21117',
+      };
+    } catch (_) {
+      return {};
     }
   }
 

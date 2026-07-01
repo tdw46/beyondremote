@@ -130,6 +130,18 @@ pub fn handle_command(key: &str, value: &str) {
             clear_last_error();
             start_if_enabled();
         }
+        "managed-server-restart" => {
+            save_public_host(value);
+            Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
+            clear_last_error();
+            std::thread::spawn(|| {
+                stop_on_shutdown();
+                if let Err(err) = start_and_apply_config() {
+                    MANAGED.lock().unwrap().last_error = err.to_string();
+                    log::warn!("Managed self-hosted server restart failed: {}", err);
+                }
+            });
+        }
         "managed-server-stop" => {
             Config::set_option(OPT_ENABLED.to_owned(), "".to_owned());
             clear_last_error();

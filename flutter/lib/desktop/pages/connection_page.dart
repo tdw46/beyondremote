@@ -103,11 +103,9 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
           child: InkWell(
                   onTap: () async {
                     await bind.mainSetCommon(
-                        key: 'managed-server-stop', value: '');
-                    await Future.delayed(const Duration(milliseconds: 500));
-                    await bind.mainSetCommon(
-                        key: 'managed-server-start',
+                        key: 'managed-server-restart',
                         value: _managedServerPublicHost);
+                    await Future.delayed(const Duration(seconds: 2));
                     await updateStatus();
                     await _publishManagedServerConfig();
                   },
@@ -251,6 +249,9 @@ class _OnlineStatusWidgetState extends State<OnlineStatusWidget> {
       _managedServerCanRestart.value = supportedRun && installed && !installing;
       _managedServerNeedsStart.value =
           supportedRun && installed && !running && !installing;
+      if (running && stateGlobal.svcStatus.value == SvcStatus.notReady) {
+        stateGlobal.svcStatus.value = SvcStatus.ready;
+      }
     } catch (_) {
       _managedServerCanRestart.value = false;
       _managedServerNeedsStart.value = false;
