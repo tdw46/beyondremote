@@ -255,6 +255,10 @@ class MyTheme {
   static const Color glassLightSurface = Color(0x88FFFFFF);
   static const Color glassDarkBg = Color(0x401A1B20);
   static const Color glassDarkSurface = Color(0x6624252B);
+  static Color get desktopGlassLightBg =>
+      isWindows ? glassLightBg.withOpacity(0.78) : Colors.transparent;
+  static Color get desktopGlassDarkBg =>
+      isWindows ? glassDarkBg.withOpacity(0.82) : Colors.transparent;
   static const Color accent = Color(0xFF0071FF);
   static const Color accent50 = Color(0x770071FF);
   static const Color accent80 = Color(0xAA0071FF);
@@ -380,7 +384,7 @@ class MyTheme {
     useMaterial3: false,
     brightness: Brightness.light,
     hoverColor: Color(0x66E0E0E0),
-    scaffoldBackgroundColor: isDesktop ? Colors.transparent : glassLightBg,
+    scaffoldBackgroundColor: isDesktop ? desktopGlassLightBg : glassLightBg,
     dialogBackgroundColor: glassLightSurface,
     appBarTheme: AppBarTheme(
       shadowColor: Colors.transparent,
@@ -460,7 +464,7 @@ class MyTheme {
     colorScheme: ColorScheme.light(
         primary: Colors.blue,
         secondary: accent,
-        background: isDesktop ? Colors.transparent : glassLightBg,
+        background: isDesktop ? desktopGlassLightBg : glassLightBg,
         surface: glassLightSurface),
     popupMenuTheme: PopupMenuThemeData(
         color: glassLightSurface,
@@ -481,7 +485,7 @@ class MyTheme {
     useMaterial3: false,
     brightness: Brightness.dark,
     hoverColor: Color(0x662D2E35),
-    scaffoldBackgroundColor: isDesktop ? Colors.transparent : glassDarkBg,
+    scaffoldBackgroundColor: isDesktop ? desktopGlassDarkBg : glassDarkBg,
     dialogBackgroundColor: glassDarkSurface,
     appBarTheme: AppBarTheme(
       shadowColor: Colors.transparent,
@@ -571,7 +575,7 @@ class MyTheme {
     colorScheme: ColorScheme.dark(
       primary: Colors.blue,
       secondary: accent,
-      background: isDesktop ? Colors.transparent : glassDarkBg,
+      background: isDesktop ? desktopGlassDarkBg : glassDarkBg,
       surface: glassDarkSurface,
     ),
     popupMenuTheme: PopupMenuThemeData(

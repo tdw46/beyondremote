@@ -657,10 +657,14 @@ function group_peers(): void
             'user' => $user['name'],
             'user_name' => $user['display_name'] ?: $user['name'],
             'note' => '',
+            'local_ips' => $info['local_ips'] ?? [],
+            'managed_server_public_host' => (string)($info['managed_server_public_host'] ?? ''),
             'info' => [
                 'username' => '',
                 'os' => (string)($info['os'] ?? ''),
                 'device_name' => $deviceName,
+                'local_ips' => $info['local_ips'] ?? [],
+                'managed_server_public_host' => (string)($info['managed_server_public_host'] ?? ''),
             ],
         ];
     }
@@ -888,6 +892,8 @@ function register_device(int $userId, string $remoteId, string $uuid, array $dev
         'tags' => ['My devices'],
         'note' => 'Signed in with Beyond Remote',
         'same_server' => true,
+        'local_ips' => $deviceInfo['local_ips'] ?? [],
+        'managed_server_public_host' => (string)($deviceInfo['managed_server_public_host'] ?? ''),
     ];
     upsert_peer($userId, $peer, true);
     ensure_tag($userId, 'My devices', tag_color('My devices'));

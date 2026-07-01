@@ -3731,7 +3731,7 @@ sLinkFile = \"{tmp_path}\\{app_name} Tray.lnk\"
 
 Set oLink = oWS.CreateShortcut(sLinkFile)
     oLink.TargetPath = \"{exe}\"
-    oLink.Arguments = \"--tray\"
+    oLink.Arguments = \"\"
     {shortcut_icon_location}
 oLink.Save
         ",
@@ -3774,6 +3774,9 @@ if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{ap
     } else {
         format!("
 sc create {app_name} binpath= \"\\\"{exe}\\\" --service\" start= auto DisplayName= \"{app_name} Service\"
+sc config {app_name} start= auto
+sc failure {app_name} reset= 60 actions= restart/5000/restart/10000/restart/30000
+sc failureflag {app_name} 1
 sc start {app_name}
 ",
     app_name = crate::get_app_name())
@@ -3790,7 +3793,7 @@ fn run_after_run_cmds(silent: bool) {
             .spawn());
     }
     if Config::get_option("stop-service") != "Y" {
-        allow_err!(std::process::Command::new(&exe).arg("--tray").spawn());
+        allow_err!(std::process::Command::new(&exe).spawn());
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
 }

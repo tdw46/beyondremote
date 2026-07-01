@@ -13,6 +13,7 @@
 #include <flutter/standard_method_codec.h>
 
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <optional>
 #include <memory>
@@ -24,6 +25,7 @@ namespace {
 constexpr DWORD kDwmUseImmersiveDarkMode = 20;
 constexpr DWORD kDwmSystemBackdropType = 38;
 constexpr DWORD kDwmWindowCornerPreference = 33;
+constexpr int kWindowCompositionAttributeAccentPolicy = 19;
 
 bool GetBoolArgument(const flutter::MethodCall<>& call, const char* key, bool fallback) {
   const auto* arguments = call.arguments();
@@ -46,25 +48,30 @@ void ApplyGlassEffect(HWND hwnd, bool dark) {
     return;
   }
 
-  bool backdrop_applied = false;
   if (HMODULE dwm = LoadLibraryW(L"dwmapi.dll")) {
     using DwmSetWindowAttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+    using DwmExtendFrameIntoClientAreaFn = HRESULT(WINAPI*)(HWND, const MARGINS*);
     auto set_dwm_attribute = reinterpret_cast<DwmSetWindowAttributeFn>(
         GetProcAddress(dwm, "DwmSetWindowAttribute"));
+    auto extend_frame = reinterpret_cast<DwmExtendFrameIntoClientAreaFn>(
+        GetProcAddress(dwm, "DwmExtendFrameIntoClientArea"));
     if (set_dwm_attribute) {
       BOOL dark_mode = dark ? TRUE : FALSE;
       set_dwm_attribute(hwnd, kDwmUseImmersiveDarkMode, &dark_mode, sizeof(dark_mode));
       const DWORD rounded = 2;
       set_dwm_attribute(hwnd, kDwmWindowCornerPreference, &rounded, sizeof(rounded));
-      const DWORD main_backdrop = 2;
-      backdrop_applied = SUCCEEDED(set_dwm_attribute(
-          hwnd, kDwmSystemBackdropType, &main_backdrop, sizeof(main_backdrop)));
+      const DWORD transient_backdrop = 3;
+      set_dwm_attribute(
+          hwnd, kDwmSystemBackdropType, &transient_backdrop, sizeof(transient_backdrop));
+    }
+    if (extend_frame) {
+      const MARGINS margins = {-1, -1, -1, -1};
+      extend_frame(hwnd, &margins);
     }
     FreeLibrary(dwm);
   }
 
-  HMODULE user32 = backdrop_applied ? nullptr : GetModuleHandleW(L"user32.dll");
-  if (user32) {
+  if (HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
     enum AccentState {
       ACCENT_DISABLED = 0,
       ACCENT_ENABLE_ACRYLICBLURBEHIND = 4,
@@ -88,7 +95,8 @@ void ApplyGlassEffect(HWND hwnd, bool dark) {
     if (set_window_composition_attribute) {
       const DWORD tint = dark ? 0x66202020 : 0x66FFFFFF;
       AccentPolicy policy = {ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, tint, 0};
-      WindowCompositionAttributeData data = {19, &policy, sizeof(policy)};
+      WindowCompositionAttributeData data = {
+          kWindowCompositionAttributeAccentPolicy, &policy, sizeof(policy)};
       set_window_composition_attribute(hwnd, &data);
     }
   }

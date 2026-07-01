@@ -53,6 +53,8 @@ pub struct LoginDeviceInfo {
     pub os: String,
     pub r#type: String,
     pub name: String,
+    pub local_ips: Vec<String>,
+    pub managed_server_public_host: String,
 }
 
 lazy_static::lazy_static! {
@@ -1325,6 +1327,28 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
         os: std::env::consts::OS.to_owned(),
         r#type: "client".to_owned(),
         name: crate::common::hostname(),
+        local_ips: local_ipv4s(),
+        managed_server_public_host: Config::get_option("managed-server-public-host"),
+    }
+}
+
+fn local_ipv4s() -> Vec<String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let mut ips: Vec<String> = default_net::get_interfaces()
+            .into_iter()
+            .flat_map(|interface| interface.ipv4.into_iter())
+            .map(|ipv4| ipv4.addr)
+            .filter(|addr| addr.is_private() && !addr.is_loopback() && !addr.is_link_local())
+            .map(|addr| addr.to_string())
+            .collect();
+        ips.sort();
+        ips.dedup();
+        return ips;
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        Vec::new()
     }
 }
 

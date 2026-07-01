@@ -29,6 +29,9 @@ try {
             -LiteralPath (Join-Path $InstallDir 'rustdesk.exe') `
             -Destination $InstallExe `
             -Force
+        sc.exe config BeyondRemote start= auto | Out-Null
+        sc.exe failure BeyondRemote reset= 60 actions= restart/5000/restart/10000/restart/30000 | Out-Null
+        sc.exe failureflag BeyondRemote 1 | Out-Null
         Start-Service -Name BeyondRemote -ErrorAction SilentlyContinue
     } elseif ([IO.Path]::GetExtension($UpdatePath) -ieq '.exe') {
         Start-Process -FilePath $UpdatePath -ArgumentList '--update' -Wait
@@ -37,7 +40,7 @@ try {
     }
     Clear-Content -LiteralPath $Pending
     if (Test-Path -LiteralPath $InstallExe) {
-        Start-Process -FilePath $InstallExe -ArgumentList '--tray' -WorkingDirectory $InstallDir
+        Start-Process -FilePath $InstallExe -WorkingDirectory $InstallDir
     }
     'BeyondRemote elevated update complete.'
 } finally {
