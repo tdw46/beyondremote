@@ -3696,7 +3696,7 @@ Future<bool> setServerConfig(
 }
 
 Future<String> peerConnectId(Peer peer) async {
-  final host = peer.managedServerPublicHost.trim();
+  final host = (await _managedPeerHost(peer)).trim();
   if (host.isEmpty) {
     return peer.id;
   }
@@ -3709,6 +3709,49 @@ Future<String> peerConnectId(Peer peer) async {
   }
   return '${peer.id}@$server?key=$key';
 }
+
+Future<String> _managedPeerHost(Peer peer) async {
+  for (final ip in peer.localIps) {
+    if (await _isSameLanIpv4(ip)) {
+      return ip;
+    }
+  }
+  return peer.managedServerPublicHost;
+}
+
+Future<bool> _isSameLanIpv4(String remoteIp) async {
+  final remote = _ipv4Parts(remoteIp);
+  if (remote == null || !_isPrivateIpv4(remote)) {
+    return false;
+  }
+  for (final interface in await NetworkInterface.list(
+      type: InternetAddressType.IPv4, includeLoopback: false)) {
+    for (final address in interface.addresses) {
+      final local = _ipv4Parts(address.address);
+      if (local != null &&
+          _isPrivateIpv4(local) &&
+          local[0] == remote[0] &&
+          local[1] == remote[1] &&
+          local[2] == remote[2]) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+List<int>? _ipv4Parts(String ip) {
+  final parts = ip.trim().split('.');
+  if (parts.length != 4) return null;
+  final parsed = parts.map(int.tryParse).toList();
+  if (parsed.any((x) => x == null || x < 0 || x > 255)) return null;
+  return parsed.cast<int>();
+}
+
+bool _isPrivateIpv4(List<int> ip) =>
+    ip[0] == 10 ||
+    (ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31) ||
+    (ip[0] == 192 && ip[1] == 168);
 
 ColorFilter? svgColor(Color? color) {
   if (color == null) {
