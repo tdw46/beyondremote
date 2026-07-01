@@ -3695,6 +3695,21 @@ Future<bool> setServerConfig(
   return true;
 }
 
+Future<String> peerConnectId(Peer peer) async {
+  final host = peer.managedServerPublicHost.trim();
+  if (host.isEmpty) {
+    return peer.id;
+  }
+  final server = host.contains(':') ? host : '$host:21116';
+  final key = peer.managedServerKey.trim().isNotEmpty
+      ? peer.managedServerKey.trim()
+      : (await bind.mainGetOption(key: 'key')).trim();
+  if (key.isEmpty) {
+    return '${peer.id}@$server';
+  }
+  return '${peer.id}@$server?key=$key';
+}
+
 ColorFilter? svgColor(Color? color) {
   if (color == null) {
     return null;

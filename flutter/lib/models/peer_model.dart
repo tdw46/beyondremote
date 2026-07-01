@@ -61,6 +61,7 @@ class Peer {
   bool? sameServer;
   List<String> localIps;
   String managedServerPublicHost;
+  String managedServerKey;
 
   String getId() {
     if (alias != '') {
@@ -89,6 +90,10 @@ class Peer {
         managedServerPublicHost = (json['managed_server_public_host'] ??
                 json['info']?['managed_server_public_host'] ??
                 '')
+            .toString(),
+        managedServerKey = (json['managed_server_key'] ??
+                json['info']?['managed_server_key'] ??
+                '')
             .toString();
 
   Map<String, dynamic> toJson() {
@@ -110,6 +115,7 @@ class Peer {
       'same_server': sameServer,
       'local_ips': localIps,
       'managed_server_public_host': managedServerPublicHost,
+      'managed_server_key': managedServerKey,
     };
   }
 
@@ -157,6 +163,7 @@ class Peer {
     this.sameServer,
     this.localIps = const [],
     this.managedServerPublicHost = '',
+    this.managedServerKey = '',
   });
 
   Peer.loading()
@@ -188,6 +195,7 @@ class Peer {
         forceAlwaysRelay == other.forceAlwaysRelay &&
         localIps.equals(other.localIps) &&
         managedServerPublicHost == other.managedServerPublicHost &&
+        managedServerKey == other.managedServerKey &&
         rdpPort == other.rdpPort &&
         rdpUsername == other.rdpUsername &&
         device_group_name == other.device_group_name &&
@@ -211,7 +219,10 @@ class Peer {
         loginName: other.loginName,
         device_group_name: other.device_group_name,
         note: other.note,
-        sameServer: other.sameServer);
+        sameServer: other.sameServer,
+        localIps: List<String>.from(other.localIps),
+        managedServerPublicHost: other.managedServerPublicHost,
+        managedServerKey: other.managedServerKey);
     peer.online = other.online;
     return peer;
   }

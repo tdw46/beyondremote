@@ -1935,10 +1935,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
     *handler.sender.write().unwrap() = Some(sender.clone());
-    // Beyond Remote account tokens are sent in LoginRequest for account-based
-    // authorization. They are not hbbs rendezvous tokens, and passing them into
-    // Client::start makes self-hosted servers try the wrong secure TCP path.
-    let token = String::new();
+    let token = rendezvous_auth_token(&handler);
     let key = crate::get_key(false).await;
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     if handler.is_port_forward() {
@@ -2029,6 +2026,21 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u32) {
     let mut remote = Remote::new(handler, receiver, sender);
     remote.io_loop(&key, &token, round).await;
     let _ = remote.sync_jobs_status_to_local().await;
+}
+
+fn rendezvous_auth_token<T: InvokeUiSession>(handler: &Session<T>) -> String {
+    let uses_public = {
+        let lc = handler.lc.read().unwrap();
+        lc.other_server
+            .as_ref()
+            .map(|(_, server, _)| server == "public")
+            .unwrap_or_else(crate::using_public_server)
+    };
+    if uses_public {
+        LocalConfig::get_option("access_token")
+    } else {
+        String::new()
+    }
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

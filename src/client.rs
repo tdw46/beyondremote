@@ -289,7 +289,8 @@ impl Client {
 
         let other_server = interface.get_lch().read().unwrap().other_server.clone();
         let (peer, other_server, key, token) = if let Some((a, b, c)) = other_server.as_ref() {
-            (a.as_ref(), b.as_ref(), c.as_ref(), "")
+            let token = if b == PUBLIC_SERVER { token } else { "" };
+            (a.as_ref(), b.as_ref(), c.as_ref(), token)
         } else {
             (peer, "", key, token)
         };
@@ -3988,8 +3989,7 @@ pub fn check_if_retry(msgtype: &str, title: &str, text: &str, retry_for_relay: b
                 && !lower.contains("resolve")
                 && !lower.contains("mismatch")
                 && !lower.contains("manually")
-                && !lower.contains("restricted")
-                && !lower.contains("not allowed")))
+                && !lower.contains("restricted")))
 }
 
 pub async fn hc_connection(

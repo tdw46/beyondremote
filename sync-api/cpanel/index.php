@@ -660,12 +660,14 @@ function group_peers(): void
             'note' => '',
             'local_ips' => $info['local_ips'] ?? [],
             'managed_server_public_host' => (string)($info['managed_server_public_host'] ?? ''),
+            'managed_server_key' => (string)($info['managed_server_key'] ?? ''),
             'info' => [
                 'username' => '',
                 'os' => (string)($info['os'] ?? ''),
                 'device_name' => $deviceName,
                 'local_ips' => $info['local_ips'] ?? [],
                 'managed_server_public_host' => (string)($info['managed_server_public_host'] ?? ''),
+                'managed_server_key' => (string)($info['managed_server_key'] ?? ''),
             ],
         ];
     }

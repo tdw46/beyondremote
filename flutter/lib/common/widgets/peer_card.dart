@@ -1635,7 +1635,7 @@ void connectInPeerTab(BuildContext context, Peer peer, PeerTabIndex tab,
       }
     }
   }
-  connect(context, peer.id,
+  connect(context, await peerConnectId(peer),
       password: password,
       isSharedPassword: isSharedPassword,
       isFileTransfer: isFileTransfer,

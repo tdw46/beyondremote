@@ -103,6 +103,7 @@ class PeerPayload {
       "note": p.note,
       "local_ips": p.info['local_ips'],
       "managed_server_public_host": p.info['managed_server_public_host'],
+      "managed_server_key": p.info['managed_server_key'],
     });
   }
 
