@@ -62,7 +62,12 @@ pub const PLATFORM_ANDROID: &str = "Android";
 
 pub const TIMER_OUT: Duration = Duration::from_secs(1);
 pub const DEFAULT_KEEP_ALIVE: i32 = 60_000;
-pub const DEFAULT_ACCOUNT_API_SERVER: &str = "https://api.beyondstudios.us";
+pub const STAGING_BUILD: bool = option_env!("BEYONDREMOTE_STAGING").is_some();
+pub const DEFAULT_ACCOUNT_API_SERVER: &str = if STAGING_BUILD {
+    "https://beyondremote-native-staging.support-commsopen-shop.workers.dev"
+} else {
+    "https://api.beyondstudios.us"
+};
 pub const DEFAULT_RENDEZVOUS_SERVER: &str = "47.203.39.150:21116";
 pub const DEFAULT_RELAY_SERVER: &str = "47.203.39.150:21117";
 pub const DEFAULT_RENDEZVOUS_KEY: &str = "N8bYBNzpnFyMp1QnFZI6hmfinbXSyc06zj7+C0075rA=";
@@ -143,7 +148,12 @@ pub fn global_init() -> bool {
 fn set_beyond_remote_defaults() {
     let mut app_name = hbb_common::config::APP_NAME.write().unwrap();
     if app_name.eq("RustDesk") {
-        *app_name = "BeyondRemote".to_owned();
+        *app_name = if STAGING_BUILD {
+            "BeyondRemote Staging"
+        } else {
+            "BeyondRemote"
+        }
+        .to_owned();
     }
     let mut settings = hbb_common::config::DEFAULT_SETTINGS.write().unwrap();
     settings.insert(

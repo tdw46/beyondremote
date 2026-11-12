@@ -1,0 +1,22 @@
+{
+  "name": "beyondremote-native-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cf build",
+    "test": "node --test *.test.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "3.0.3"
+  },
+  "devDependencies": {
+    "cf": "1.0.0-beta.27",
+    "miniflare": "5.20261101.0-beta",
+    "workerd": "1.20261103.1",
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.11",
+    "vite": "8.3.5"
+  },
+  "overrides": {
+    "workerd": "1.20261103.1"
+  }
+}

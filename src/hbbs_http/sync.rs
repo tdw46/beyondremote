@@ -14,6 +14,9 @@ use hbb_common::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[path = "event_sync.rs"]
+mod event_sync;
+
 const TIME_HEARTBEAT: Duration = Duration::from_secs(15);
 const UPLOAD_SYSINFO_TIMEOUT: Duration = Duration::from_secs(120);
 const TIME_CONN: Duration = Duration::from_secs(3);
@@ -91,6 +94,7 @@ async fn start_hbbs_sync_async() {
     let mut last_sent: Option<Instant> = None;
     let mut info_uploaded = InfoUploaded::default();
     let mut sysinfo_ver = "".to_owned();
+    let mut native = NativePresence::default();
     loop {
         tokio::select! {
             _ = interval.tick() => {
@@ -100,6 +104,12 @@ async fn start_hbbs_sync_async() {
                     *SERVER_API_AVAILABLE.lock().unwrap() = false;
                     continue;
                 }
+                let base = url.trim_end_matches("/api/heartbeat");
+                if !base.is_empty() && Config::get_option("beyondremote-native-api") == base {
+                    native.observe(base, &id).await;
+                    continue;
+                }
+                native = NativePresence::default();
                 if config::option2bool("stop-service", &Config::get_option("stop-service")) {
                     continue;
                 }
@@ -306,4 +316,123 @@ fn handle_config_options(config_options: HashMap<String, String>) {
 #[cfg(not(any(target_os = "ios")))]
 pub fn has_server_api() -> bool {
     *SERVER_API_AVAILABLE.lock().unwrap()
+}
+
+// Native API presence is advisory; connection attempts still verify reachability through
+// rendezvous. Crashes cannot reliably publish an offline event, so never promise a lease.
+#[derive(Default)]
+struct NativePresence {
+    context: String,
+    fingerprint: String,
+    device_signature: String,
+    generation: String,
+    sequence: u32,
+    gate: event_sync::EventGate,
+}
+impl NativePresence {
+    async fn observe(&mut self, base: &str, id: &str) {
+        let access = Config::get_option("beyondremote-account-access-token");
+        if access.is_empty() || id.is_empty() || !base.starts_with("https://") {
+            return;
+        }
+        let context = format!("{}|{}|{}", base, id, access);
+        if self.context != context {
+            *self = Self {
+                context,
+                ..Self::default()
+            };
+        }
+        let stopped = config::option2bool("stop-service", &Config::get_option("stop-service"));
+        let state = if stopped || config::get_online_state() <= 0 {
+            "offline-reported"
+        } else {
+            "online-reported"
+        };
+        let device = crate::ui_interface::get_login_device_info();
+        let device_signature = json!(device).to_string();
+        if self.device_signature != device_signature {
+            self.device_signature = device_signature;
+            self.generation.clear();
+        }
+        let fingerprint = json!([state, &device]).to_string();
+        if !self
+            .gate
+            .ready(fingerprint.clone(), std::time::Instant::now())
+        {
+            return;
+        }
+        if self.fingerprint != fingerprint {
+            self.fingerprint = fingerprint;
+            self.sequence = self.sequence.saturating_add(1);
+        }
+        let opening = self.generation.is_empty();
+        let mut body = json!({"id":id,"uuid":crate::encode64(hbb_common::get_uuid()),"modified_at":LocalConfig::get_option("strategy_timestamp").parse::<i64>().unwrap_or(0)});
+        body["state"] = json!(state);
+        if opening {
+            body["deviceInfo"] = json!(device);
+        } else {
+            body["generation"] = json!(self.generation);
+            body["sequence"] = json!(self.sequence);
+            body["state"] = json!(state);
+        }
+        let client = super::create_http_client_async(hbb_common::tls::TlsType::Rustls, false);
+        let result = client
+            .post(format!(
+                "{}/api/v1/presence/{}",
+                base,
+                if opening { "open" } else { "event" }
+            ))
+            .bearer_auth(&access)
+            .json(&body)
+            .timeout(Duration::from_secs(12))
+            .send()
+            .await;
+        match result {
+            Ok(response) if response.status().is_success() => {
+                match response.json::<Value>().await {
+                    Ok(data) => {
+                        if opening {
+                            if let Some(generation) =
+                                data["generation"].as_str().filter(|v| v.len() == 64)
+                            {
+                                self.generation = generation.to_owned();
+                                self.gate.accepted();
+                            } else {
+                                log::warn!("Native presence response missing generation");
+                                return;
+                            }
+                        } else {
+                            self.gate.accepted();
+                        }
+                        if let Some(ts) = data["modified_at"].as_i64() {
+                            LocalConfig::set_option("strategy_timestamp".into(), ts.to_string());
+                        }
+                        if let Ok(mut strategy) =
+                            serde_json::from_value::<StrategyOptions>(data["strategy"].clone())
+                        {
+                            // A local running managed host always owns its connection configuration.
+                            if crate::managed_server::account_server_info().is_some() {
+                                for key in ["custom-rendezvous-server", "relay-server", "key"] {
+                                    strategy.config_options.remove(key);
+                                }
+                            }
+                            handle_config_options(strategy.config_options);
+                        }
+                    }
+                    Err(_) => log::warn!("Native presence response was invalid"),
+                }
+            }
+            Ok(response) => {
+                let status = response.status().as_u16();
+                if matches!(status, 401 | 403 | 409) {
+                    self.gate.block();
+                }
+                log::warn!(
+                    "Native presence rejected (HTTP {}); retries are bounded",
+                    status
+                );
+            }
+            Err(_) => log::warn!("Native presence unavailable; retries are bounded"),
+        }
+    }
 }

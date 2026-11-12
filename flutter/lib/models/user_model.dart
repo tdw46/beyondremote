@@ -14,7 +14,8 @@ import 'platform_model.dart';
 
 bool refreshingUser = false;
 bool refreshingAccountServerConfig = false;
-bool accountServerConfigRefreshAttempted = false;
+String accountServerConfigContext = '';
+DateTime? accountServerConfigRefreshedAt;
 bool refreshingOtherModels = false;
 
 class UserModel {
@@ -99,7 +100,14 @@ class UserModel {
 
       final user = UserPayload.fromJson(data);
       _parseAndUpdateUser(user);
-      await refreshServerConfigFromAccount();
+      if (data['sync_capabilities'] is Map &&
+          data['sync_capabilities']['presence'] == 'events-v1') {
+        await _applyAccountServerConfig(data, url);
+        accountServerConfigContext = '$url|$token';
+        accountServerConfigRefreshedAt = DateTime.now();
+      } else {
+        await refreshServerConfigFromAccount();
+      }
     } catch (e) {
       debugPrint('Failed to refreshCurrentUser: $e');
     } finally {
@@ -258,17 +266,21 @@ class UserModel {
   Future<bool> refreshServerConfigFromAccount(
       {bool force = false, bool refreshModels = true}) async {
     if (bind.isDisableAccount()) return false;
-    if (accountServerConfigRefreshAttempted && !force) return false;
     if (refreshingAccountServerConfig) return false;
 
     final token = bind.mainGetLocalOption(key: 'access_token');
     if (token.isEmpty) return false;
 
-    accountServerConfigRefreshAttempted = true;
+    final url = await bind.mainGetApiServer();
+    if (url.trim().isEmpty) return false;
+    final context = '$url|$token';
+    if (accountServerConfigContext == context &&
+        accountServerConfigRefreshedAt != null &&
+        (!force ||
+            DateTime.now().difference(accountServerConfigRefreshedAt!) <
+                const Duration(seconds: 5))) return false;
     refreshingAccountServerConfig = true;
     try {
-      final url = await bind.mainGetApiServer();
-      if (url.trim().isEmpty) return false;
       final modifiedAt = force
           ? 0
           : int.tryParse(bind.mainGetLocalOption(key: 'strategy_timestamp')) ??
@@ -291,35 +303,47 @@ class UserModel {
 
       final data = jsonDecode(decode_http_response(response));
       if (data is! Map<String, dynamic>) return false;
-      final rspModifiedAt = data['modified_at'];
-      if (rspModifiedAt != null) {
-        await bind.mainSetLocalOption(
-            key: 'strategy_timestamp', value: rspModifiedAt.toString());
-      }
-
-      final strategy = data['strategy'];
-      if (strategy is! Map<String, dynamic>) return false;
-      final configOptions = strategy['config_options'];
-      if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
-        return false;
-      }
-      final localManagedConfig = await _localManagedServerConfig();
-      for (final entry in configOptions.entries) {
-        final key = entry.key.toString();
-        final localValue = localManagedConfig[key];
-        await bind.mainSetOption(
-            key: key, value: localValue ?? entry.value?.toString() ?? '');
-      }
+      final applied = await _applyAccountServerConfig(data, url);
+      accountServerConfigContext = context;
+      accountServerConfigRefreshedAt = DateTime.now();
       if (force && refreshModels) {
         await updateOtherModels(quiet: true);
       }
-      return true;
+      return applied;
     } catch (e) {
       debugPrint('refreshServerConfigFromAccount failed: $e');
       return false;
     } finally {
       refreshingAccountServerConfig = false;
     }
+  }
+
+  Future<bool> _applyAccountServerConfig(
+      Map<String, dynamic> data, String url) async {
+    final native = data['sync_capabilities'] is Map &&
+        data['sync_capabilities']['presence'] == 'events-v1';
+    await bind.mainSetOption(
+        key: 'beyondremote-native-api', value: native ? url : '');
+    final rspModifiedAt = data['modified_at'];
+    if (rspModifiedAt != null) {
+      await bind.mainSetLocalOption(
+          key: 'strategy_timestamp', value: rspModifiedAt.toString());
+    }
+
+    final strategy = data['strategy'];
+    if (strategy is! Map<String, dynamic>) return false;
+    final configOptions = strategy['config_options'];
+    if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
+      return false;
+    }
+    final localManagedConfig = await _localManagedServerConfig();
+    for (final entry in configOptions.entries) {
+      final key = entry.key.toString();
+      final localValue = localManagedConfig[key];
+      await bind.mainSetOption(
+          key: key, value: localValue ?? entry.value?.toString() ?? '');
+    }
+    return true;
   }
 
   Future<Map<String, String>> _localManagedServerConfig() async {

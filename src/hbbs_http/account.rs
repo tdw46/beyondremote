@@ -165,7 +165,10 @@ pub async fn verify_same_account_device(
         return false;
     }
 
-    let url = format!("{}/api/beyondremote/device-auth", api_server.trim_end_matches('/'));
+    let url = format!(
+        "{}/api/beyondremote/device-auth",
+        api_server.trim_end_matches('/')
+    );
     let client = create_http_client_async_with_url(&url).await;
     let resp = client
         .post(&url)
@@ -178,7 +181,11 @@ pub async fn verify_same_account_device(
         .send()
         .await;
     let Ok(resp) = resp else {
-        log::warn!("Same-account device auth request failed for {} -> {}", source_id, target_id);
+        log::warn!(
+            "Same-account device auth request failed for {} -> {}",
+            source_id,
+            target_id
+        );
         return false;
     };
     if !resp.status().is_success() {
@@ -272,12 +279,8 @@ impl OidcSession {
             body: String,
         }
 
-        let resp = crate::http_request_sync(
-            url.to_string(),
-            "GET".to_owned(),
-            None,
-            "{}".to_owned(),
-        )?;
+        let resp =
+            crate::http_request_sync(url.to_string(), "GET".to_owned(), None, "{}".to_owned())?;
         let resp = serde_json::from_str::<HttpResponseBody>(&resp)?;
         HbbHttpResponse::parse(&resp.body)
     }
@@ -339,6 +342,7 @@ impl OidcSession {
         OIDC_SESSION.write().unwrap().code_url = Some(code_url.clone());
 
         let begin = Instant::now();
+        let mut query_delay = QUERY_INTERVAL_SECS;
         let query_timeout = OIDC_SESSION.read().unwrap().query_timeout;
         while OIDC_SESSION.read().unwrap().keep_querying && begin.elapsed() < query_timeout {
             match Self::query(&api_server, &code_url.code, &id, &uuid) {
@@ -394,7 +398,15 @@ impl OidcSession {
                     // ignore
                 }
             }
-            Self::sleep(QUERY_INTERVAL_SECS);
+            // Local cancellation remains responsive while OAuth network polling backs off.
+            let wait_until = Instant::now() + Duration::from_secs_f32(query_delay);
+            while Instant::now() < wait_until
+                && OIDC_SESSION.read().unwrap().keep_querying
+                && begin.elapsed() < query_timeout
+            {
+                Self::sleep(0.2);
+            }
+            query_delay = (query_delay * 2.0).min(8.0);
         }
 
         if begin.elapsed() >= query_timeout {
