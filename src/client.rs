@@ -262,6 +262,12 @@ impl Client {
                 crate::hbbs_http::account::connection_route(&Config::get_id(), peer).await?;
             let pk =
                 base64::decode(&route.public_key, base64::Variant::Original).unwrap_or_default();
+            log::info!(
+                "Account route: {} candidates, direct port valid: {}, key valid: {}",
+                route.addresses.len(),
+                route.port == 21128,
+                pk.len() == sign::PUBLICKEYBYTES
+            );
             if route.port == 21128 && pk.len() == sign::PUBLICKEYBYTES {
                 for address in route.addresses.iter().take(4) {
                     let Ok(ip) = address.parse::<std::net::Ipv4Addr>() else {

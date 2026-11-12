@@ -99,7 +99,9 @@ class MainFlutterWindow: NSWindow {
         guard let window = window, let flutterView = flutterView else { return }
         window.isOpaque = false
         window.backgroundColor = .clear
-        window.alphaValue = 0.82
+        // Glass belongs to the backdrop, never to the whole window: reducing
+        // window alpha also fades remote video and exposes apps behind it.
+        window.alphaValue = 1.0
         window.titlebarAppearsTransparent = true
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
 
