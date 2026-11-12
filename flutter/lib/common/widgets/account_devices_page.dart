@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../common.dart';
-import '../../common/widgets/login.dart';
+import 'login.dart';
 import '../../models/peer_model.dart';
 
 /// Account-owned devices are the only entry point for the new connection flow.
@@ -125,7 +125,8 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
         final loadFailed = gFFI.groupModel.groupLoadError.value.isNotEmpty ||
             user.networkError.value.isNotEmpty;
         return SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
+          padding:
+              EdgeInsets.all(MediaQuery.sizeOf(context).width < 600 ? 16 : 28),
           child: Center(
               child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 850),

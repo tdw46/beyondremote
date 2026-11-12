@@ -257,6 +257,33 @@ impl Client {
         if config::is_incoming_only() {
             bail!("Incoming only mode");
         }
+        if crate::common::STAGING_BUILD {
+            let route =
+                crate::hbbs_http::account::connection_route(&Config::get_id(), peer).await?;
+            let pk =
+                base64::decode(&route.public_key, base64::Variant::Original).unwrap_or_default();
+            if route.port == 21128 && pk.len() == sign::PUBLICKEYBYTES {
+                for address in route.addresses.iter().take(4) {
+                    let Ok(ip) = address.parse::<std::net::Ipv4Addr>() else {
+                        continue;
+                    };
+                    if !ip.is_private() {
+                        continue;
+                    }
+                    let endpoint = format!("{}:{}", ip, route.port);
+                    if let Ok(mut conn) = connect_tcp_local(endpoint, None, 600).await {
+                        // A reachable wrong host must fail closed, never fall back to plaintext.
+                        Self::secure_account_connection(peer, &pk, &mut conn).await?;
+                        log::info!("Account connection established directly on local network");
+                        return Ok((
+                            (conn, true, Some(pk), None, "TCP"),
+                            (0, String::new()),
+                            false,
+                        ));
+                    }
+                }
+            }
+        }
         // to-do: remember the port for each peer, so that we can retry easier
         if hbb_common::is_ip_str(peer) {
             return Ok((
@@ -757,6 +784,36 @@ impl Client {
         };
         log::debug!("{} punch secure_connection ok", punch_type);
         Ok((conn, direct, pk, kcp, typ))
+    }
+
+    async fn secure_account_connection(
+        peer_id: &str,
+        pk: &[u8],
+        conn: &mut Stream,
+    ) -> ResultType<()> {
+        let sign_pk =
+            sign::PublicKey::from_slice(pk).ok_or_else(|| anyhow!("Invalid account device key"))?;
+        let bytes = timeout(3000, conn.next())
+            .await?
+            .ok_or_else(|| anyhow!("Device closed handshake"))??;
+        let msg = Message::parse_from_bytes(&bytes)?;
+        let Some(message::Union::SignedId(si)) = msg.union else {
+            bail!("Device did not provide its identity");
+        };
+        let (id, their_pk) = decode_id_pk(&si.id, &sign_pk)?;
+        if id != peer_id {
+            bail!("Account device identity did not match");
+        }
+        let (asymmetric_value, symmetric_value, key) = create_symmetric_key_msg(their_pk);
+        let mut reply = Message::new();
+        reply.set_public_key(PublicKey {
+            asymmetric_value,
+            symmetric_value,
+            ..Default::default()
+        });
+        timeout(3000, conn.send(&reply)).await??;
+        conn.set_key(key);
+        Ok(())
     }
 
     /// Establish secure connection with the server.

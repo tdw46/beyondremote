@@ -95,6 +95,20 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  assert.equal((await call('/api/currentUser',{token:claimed.data.access_token})).data.name,'github-existing');
  }finally{globalThis.fetch=savedFetch;}
  });
+ await t.test('direct routes are private, bounded, owned and read-only',async()=>{
+ const key='A'.repeat(43)+'=';
+ await call('/api/currentUser',{token:one,body:{id:'lan-target',deviceInfo:{account_connection:'ticket-v1',account_direct_port:21128,account_public_key:key,local_ips:['192.168.1.2','127.0.0.1','169.254.1.1','8.8.8.8','10.0.0.2','172.16.0.1','10.0.0.2','10.0.0.3','10.0.0.4']}}});
+ const fields={source_id:'device1',target_id:'lan-target'};
+ Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
+ const r=await call('/api/v1/connect/route',{token:one,body:fields});assert.equal(r.status,200);
+ assert.deepEqual(r.data,{port:21128,public_key:key,addresses:['192.168.1.2','10.0.0.2','172.16.0.1','10.0.0.3']});assert.equal(meter.rowsWritten,0);
+ console.log(JSON.stringify({routeOperations:{...meter}}));
+ assert.equal((await call('/api/v1/connect/route',{body:fields})).status,401);
+ assert.equal((await call('/api/v1/connect/route',{token:two,body:fields})).status,403);
+ assert.equal((await call('/api/v1/connect/route',{token:one,body:{...fields,source_id:'device2'}})).status,403);
+ await call('/api/currentUser',{token:one,body:{id:'lan-target',deviceInfo:{account_connection:'ticket-v1',account_direct_port:22,account_public_key:key,local_ips:['192.168.1.2']}}});
+ assert.deepEqual((await call('/api/v1/connect/route',{token:one,body:fields})).data.addresses,[]);
+ });
  await t.test('measure operation cost of representative actions',async()=>{
  const costs=[];
  const measure=async(name,path,options)=>{Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});const r=await call(path,options);assert.equal(r.status,200);costs.push({name,...meter});return r;};

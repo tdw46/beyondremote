@@ -17,6 +17,7 @@ import '../../consts.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
 import 'home_page.dart';
+import '../../common/widgets/account_devices_page.dart';
 
 /// Connection page for connecting to a remote peer.
 class ConnectionPage extends StatefulWidget implements PageShape {
@@ -62,6 +63,7 @@ class _ConnectionPageState extends State<ConnectionPage> {
   @override
   void initState() {
     super.initState();
+    if (appName == 'BeyondRemote Staging') return;
     _allPeersLoader.init(setState);
     _idFocusNode.addListener(onFocusChanged);
     if (_idController.text.isEmpty) {
@@ -79,6 +81,9 @@ class _ConnectionPageState extends State<ConnectionPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (appName == 'BeyondRemote Staging') {
+      return const AccountDevicesPage(permissions: SizedBox.shrink());
+    }
     Provider.of<FfiModel>(context);
     return CustomScrollView(
       slivers: [

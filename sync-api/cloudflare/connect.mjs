@@ -1,8 +1,16 @@
-import {fail,digest,token,remoteId,stamp} from './core.mjs';
+import {fail,digest,token,remoteId,stamp,parse} from './core.mjs';
 // Connection tickets are short-lived, one-use and never contain account tokens.
 export async function connectRoute(db,u,path,b){
  const source=remoteId(b.source_id),target=remoteId(b.target_id);
  if(!source||!target||source===target)fail('Choose another device');
+ if(path.endsWith('/route')){
+  const rows=(await db.prepare('SELECT remote_id,device_info FROM br_devices WHERE user_id=? AND remote_id IN(?,?)').bind(u.id,source,target).all()).results;
+  if(!rows.some(d=>d.remote_id===source)||!rows.some(d=>d.remote_id===target))fail('Device is not in your account',403);
+  const info=parse(rows.find(d=>d.remote_id===target).device_info);
+  const privateIp=ip=>{if(typeof ip!=='string'||!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip))return false;const a=ip.split('.').map(Number);return a.every(n=>n<=255)&&(a[0]===10||a[0]===172&&a[1]>=16&&a[1]<=31||a[0]===192&&a[1]===168);};
+  const ready=info.account_connection==='ticket-v1'&&info.account_direct_port===21128&&typeof info.account_public_key==='string'&&/^[A-Za-z0-9+/]{43}=$/.test(info.account_public_key);
+  return {port:21128,public_key:ready?info.account_public_key:'',addresses:ready&&Array.isArray(info.local_ips)?[...new Set(info.local_ips.filter(privateIp))].slice(0,4):[]};
+ }
  if(path.endsWith('/grant')){
   const devices=(await db.prepare('SELECT remote_id FROM br_devices WHERE user_id=? AND remote_id IN(?,?)').bind(u.id,source,target).all()).results;
   if(!devices.some(d=>d.remote_id===source)||!devices.some(d=>d.remote_id===target))fail('Device is not in your account',403);

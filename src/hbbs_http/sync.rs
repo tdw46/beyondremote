@@ -411,6 +411,7 @@ impl NativePresence {
                             serde_json::from_value::<StrategyOptions>(data["strategy"].clone())
                         {
                             // A local running managed host always owns its connection configuration.
+                            #[cfg(not(any(target_os = "android", target_os = "ios")))]
                             if crate::managed_server::account_server_info().is_some() {
                                 for key in ["custom-rendezvous-server", "relay-server", "key"] {
                                     strategy.config_options.remove(key);

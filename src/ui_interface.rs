@@ -56,6 +56,8 @@ pub struct LoginDeviceInfo {
     pub local_ips: Vec<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub account_connection: String,
+    pub account_direct_port: u16,
+    pub account_public_key: String,
     pub managed_server_running: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub managed_server_public_host: String,
@@ -1328,7 +1330,10 @@ pub fn get_fingerprint() -> String {
 
 #[inline]
 pub fn get_login_device_info() -> LoginDeviceInfo {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let managed_server_info = crate::managed_server::account_server_info();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let managed_server_info: Option<(String, String)> = None;
     let managed_server_running = managed_server_info.is_some();
     LoginDeviceInfo {
         // std::env::consts::OS is better than whoami::platform() here.
@@ -1338,6 +1343,18 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
         local_ips: local_ipv4s(),
         account_connection: if crate::common::STAGING_BUILD {
             "ticket-v1".to_owned()
+        } else {
+            String::new()
+        },
+        account_direct_port: if crate::common::STAGING_BUILD
+            && !cfg!(any(target_os = "ios", target_os = "android"))
+        {
+            21128
+        } else {
+            0
+        },
+        account_public_key: if crate::common::STAGING_BUILD {
+            crate::encode64(Config::get_key_pair().1)
         } else {
             String::new()
         },

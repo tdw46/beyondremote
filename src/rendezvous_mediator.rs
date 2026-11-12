@@ -881,6 +881,9 @@ impl RendezvousMediator {
 }
 
 fn get_direct_port() -> i32 {
+    if crate::common::STAGING_BUILD {
+        return 21128;
+    }
     let mut port = Config::get_option("direct-access-port")
         .parse::<i32>()
         .unwrap_or(0);
@@ -894,10 +897,15 @@ async fn direct_server(server: ServerPtr) {
     let mut listener = None;
     let mut port = 0;
     loop {
-        let disabled = !option2bool(
-            OPTION_DIRECT_SERVER,
-            &Config::get_option(OPTION_DIRECT_SERVER),
-        ) || option2bool("stop-service", &Config::get_option("stop-service"));
+        let enabled = if crate::common::STAGING_BUILD {
+            !Config::get_option("beyondremote-account-access-token").is_empty()
+        } else {
+            option2bool(
+                OPTION_DIRECT_SERVER,
+                &Config::get_option(OPTION_DIRECT_SERVER),
+            )
+        };
+        let disabled = !enabled || option2bool("stop-service", &Config::get_option("stop-service"));
         if !disabled && listener.is_none() {
             port = get_direct_port();
             match hbb_common::tcp::listen_any(port as _).await {
@@ -943,7 +951,7 @@ async fn direct_server(server: ServerPtr) {
                             server,
                             hbb_common::Stream::from(stream, local_addr),
                             addr,
-                            false,
+                            crate::common::STAGING_BUILD,
                             None, // Direct connections don't have control_permissions
                         )
                         .await

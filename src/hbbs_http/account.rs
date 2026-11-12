@@ -139,6 +139,41 @@ pub struct AuthResult {
     pub auth_body: Option<AuthBody>,
 }
 
+/// Resolve only an owned device, on explicit connect intent. No polling or writes.
+#[derive(Deserialize)]
+pub struct AccountRoute {
+    pub addresses: Vec<String>,
+    pub port: u16,
+    pub public_key: String,
+}
+
+pub async fn connection_route(source_id: &str, target_id: &str) -> ResultType<AccountRoute> {
+    let access = LocalConfig::get_option("access_token");
+    if access.is_empty() {
+        hbb_common::bail!("Sign in before connecting");
+    }
+    let api = crate::common::get_api_server(
+        Config::get_option("api-server"),
+        Config::get_option("custom-rendezvous-server"),
+    );
+    if !api.starts_with("https://") {
+        hbb_common::bail!("Account API must use HTTPS");
+    }
+    let url = format!("{}/api/v1/connect/route", api.trim_end_matches('/'));
+    let response = create_http_client_async_with_url(&url)
+        .await
+        .post(&url)
+        .timeout(Duration::from_secs(8))
+        .bearer_auth(access)
+        .json(&json!({"source_id":source_id,"target_id":target_id}))
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        hbb_common::bail!("Could not verify device access; refresh your devices");
+    }
+    Ok(response.json().await?)
+}
+
 /// Issue a one-use device ticket. The account bearer token stays with the API.
 pub async fn connection_ticket(source_id: &str, target_id: &str) -> Option<String> {
     let access_token = LocalConfig::get_option("access_token");

@@ -197,6 +197,11 @@ pub async fn create_tcp_connection(
     let mut stream = stream;
     let id = server.write().unwrap().get_new_id();
     let (sk, pk) = Config::get_key_pair();
+    if crate::common::STAGING_BUILD
+        && (!secure || pk.len() != sign::PUBLICKEYBYTES || sk.len() != sign::SECRETKEYBYTES)
+    {
+        bail!("Account connections require an encrypted handshake");
+    }
     if secure && pk.len() == sign::PUBLICKEYBYTES && sk.len() == sign::SECRETKEYBYTES {
         let mut sk_ = [0u8; sign::SECRETKEYBYTES];
         sk_[..].copy_from_slice(&sk);
@@ -229,13 +234,16 @@ pub async fn create_tcp_connection(
                                 &pk.asymmetric_value,
                                 &our_sk_b,
                             )?);
-                        } else if pk.asymmetric_value.is_empty() {
+                        } else if pk.asymmetric_value.is_empty() && !crate::common::STAGING_BUILD {
                             Config::set_key_confirmed(false);
                             log::info!("Force to update pk");
                         } else {
                             bail!("Handshake failed: invalid public sign key length from peer");
                         }
                     } else {
+                        if crate::common::STAGING_BUILD {
+                            bail!("Handshake failed: invalid message type");
+                        }
                         log::error!("Handshake failed: invalid message type");
                     }
                 } else {

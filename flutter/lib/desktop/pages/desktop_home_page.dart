@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'account_devices_page.dart';
+import '../../common/widgets/account_devices_page.dart';
 import 'dart:io';
 import 'dart:convert';
 

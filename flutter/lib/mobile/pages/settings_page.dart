@@ -712,7 +712,10 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
             ],
           ),
         SettingsSection(title: Text(translate("Settings")), tiles: [
-          if (!disabledSettings && !_hideNetwork && !_hideServer)
+          if (appName != 'BeyondRemote Staging' &&
+              !disabledSettings &&
+              !_hideNetwork &&
+              !_hideServer)
             SettingsTile(
                 title: Text(translate('ID/Relay Server')),
                 leading: Icon(Icons.cloud),
@@ -722,7 +725,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                     setState(callback);
                   });
                 }),
-          if (!_hideNetwork && !_hideProxy)
+          if (appName != 'BeyondRemote Staging' && !_hideNetwork && !_hideProxy)
             SettingsTile(
                 title: Text(translate('Socks5/Http(s) Proxy')),
                 leading: Icon(Icons.network_ping),
@@ -736,7 +739,10 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                 onPressed: (context) {
                   showDeployDialog();
                 }),
-          if (!disabledSettings && !_hideNetwork && !_hideWebSocket)
+          if (appName != 'BeyondRemote Staging' &&
+              !disabledSettings &&
+              !_hideNetwork &&
+              !_hideWebSocket)
             SettingsTile.switchTile(
               title: Text(translate('Use WebSocket')),
               initialValue: _allowWebSocket,
@@ -751,7 +757,7 @@ class _SettingsState extends State<SettingsPage> with WidgetsBindingObserver {
                       });
                     },
             ),
-          if (!_isUsingPublicServer)
+          if (appName != 'BeyondRemote Staging' && !_isUsingPublicServer)
             SettingsTile.switchTile(
               title: Text(translate('Allow insecure TLS fallback')),
               initialValue: _allowInsecureTlsFallback,
