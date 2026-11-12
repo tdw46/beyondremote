@@ -34,6 +34,9 @@ HWND FindExistingMainWindow(const std::wstring& app_name) {
   if (hwnd != NULL) {
     return hwnd;
   }
+  if (app_name == L"BeyondRemote Staging") {
+    return NULL;
+  }
   // Older fork builds briefly used a spaced display name before the app name
   // was normalized to BeyondRemote. Keep the fallback so those windows still
   // get focused instead of creating a duplicate main process.
@@ -54,7 +57,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   }
 
   if (!AllowsMultipleInstances(command_line_arguments)) {
+#ifdef BEYONDREMOTE_STAGING
+    HWND existing_hwnd = FindExistingMainWindow(L"BeyondRemote Staging");
+#else
     HWND existing_hwnd = FindExistingMainWindow(L"BeyondRemote");
+#endif
     if (existing_hwnd != NULL) {
       if (!command_line_arguments.empty()) {
         DispatchToUniLinksDesktop(existing_hwnd);
