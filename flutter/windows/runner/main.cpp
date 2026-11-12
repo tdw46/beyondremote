@@ -56,7 +56,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     argument.erase(argument.find_last_not_of(" \n\r\t") + 1);
   }
 
-  if (!AllowsMultipleInstances(command_line_arguments)) {
+  // Only a plain GUI launch may bypass Rust initialization. In particular,
+  // --cm-no-ui, --server and --service must reach the core command handlers.
+  if (command_line_arguments.empty()) {
 #ifdef BEYONDREMOTE_STAGING
     HWND existing_hwnd = FindExistingMainWindow(L"BeyondRemote Staging");
 #else
