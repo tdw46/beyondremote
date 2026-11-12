@@ -47,6 +47,44 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  await call('/api/v1/presence/open',{token:one,body:{id:'device1'}});
  assert.equal((await call('/api/v1/presence/event',{token:one,body:{...event,sequence:3}})).status,409);
  });
+ await t.test('server choice is owner scoped, idempotent and separate from reachability',async()=>{
+ await call('/api/currentUser',{token:one,body:{id:'device1',deviceInfo:{os:'Darwin',account_connection:'ticket-v1'}}});
+ const select=id=>call('/api/v1/connection-servers/select',{token:one,body:{device_id:id}});
+ assert.equal((await call('/api/v1/connection-servers',{method:'GET'})).status,401);
+ assert.equal((await select('device2')).status,403);
+ await call('/api/currentUser',{token:one,body:{id:'phone',deviceInfo:{os:'iOS'}}});
+ assert.equal((await select('phone')).status,400);
+ assert.equal((await select('device1')).status,200);
+ const before=await db.prepare('SELECT * FROM br_server_preferences WHERE user_id=1').first();
+ Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
+ assert.equal((await select('device1')).status,200);assert.equal(meter.rowsWritten,0);
+ console.log(JSON.stringify({unchangedServerSelection:{...meter}}));
+ assert.deepEqual(await db.prepare('SELECT * FROM br_server_preferences WHERE user_id=1').first(),before);
+ const stale={os:'Windows',name:'Old desktop',managed_server_running:true,managed_server_public_host:'old.example.test',managed_server_key:'A'.repeat(43)+'='};
+ await call('/api/currentUser',{token:one,body:{id:'old-server',deviceInfo:stale}});
+ Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
+ const list=(await call('/api/v1/connection-servers',{method:'GET',token:one})).data.devices;
+ assert.equal(meter.rowsWritten,0);console.log(JSON.stringify({serverListOperations:{...meter}}));
+ assert.equal(list.find(d=>d.id==='device1').selected,true);
+ assert.equal(list.find(d=>d.id==='old-server').state,'unconfirmed');
+ assert.equal(list.find(d=>d.id==='old-server').host,undefined);
+ assert.ok(!(await call('/api/v1/connection-servers',{method:'GET',token:two})).data.devices.some(d=>d.id==='device1'));
+ env.ACCOUNT_SERVER_SELECTION='1';
+ try{
+ let config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
+ assert.equal(config['custom-rendezvous-server'],'');
+ await select('old-server');
+ config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
+ assert.equal(config['custom-rendezvous-server'],'');
+ const opened=await call('/api/v1/presence/open',{token:one,body:{id:'old-server'}});
+ config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
+ assert.equal(config['custom-rendezvous-server'],'old.example.test:21116');
+ await call('/api/v1/presence/event',{token:one,body:{id:'old-server',generation:opened.data.generation,sequence:1,state:'offline-reported'}});
+ config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
+ assert.equal(config['custom-rendezvous-server'],'');
+ await select('device1');
+ }finally{delete env.ACCOUNT_SERVER_SELECTION;}
+ });
  await t.test('concurrent partial peer edits preserve fields and explicit null',async()=>{
  await call('/api/ab/peer/add/personal',{token:one,body:{id:'friend',alias:'Original',note:'Keep',tags:['Blue'],custom:{a:1}}});
  const responses=await Promise.all([call('/api/ab/peer/update/personal',{method:'PUT',token:one,body:{id:'friend',alias:'Changed'}}),call('/api/ab/peer/update/personal',{method:'PUT',token:one,body:{id:'friend',note:null,custom:{b:2}}})]);

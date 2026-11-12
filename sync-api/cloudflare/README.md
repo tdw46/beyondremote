@@ -94,3 +94,30 @@ both test computers. The Windows C++ setup currently fails catalog loading. Mac
 GUI and local authorization tests do not establish cross-device playback, input,
 NAT traversal, sleep/wake, or relay recovery. Track these separately before any
 stable release or production cutover.
+
+## Account server selection (turn 214)
+
+Tyler's latest choice is **this Mac** (`tylers-macbook-pro`, device 236321073),
+superseding the temporary laptop and earlier desktop choices. The owner can
+change this preference without changing device identities or account access.
+
+Authenticated `GET /api/v1/connection-servers` lists only the caller's devices.
+`POST /api/v1/connection-servers/select` accepts `{"device_id": "..."}` and
+requires an owned desktop. Re-selecting the same machine writes no rows. The
+preference is stored separately from imported device reports and presence.
+Unconfirmed or signed-out hosts do not expose a usable address/key in this API.
+An active session and online report mean only `reported-ready`; actual internet
+reachability must still be tested on connection intent. No timer or poll is added.
+
+Selection-based routing is behind `ACCOUNT_SERVER_SELECTION=1`, currently OFF.
+Do not activate until matching desktop clients preserve the authenticated LAN
+path with an empty internet-server configuration and present server setup/status.
+This compatibility gate keeps the current installed clients working. The old
+September desktop report is not accepted as readiness by the new selection path.
+
+Remaining acceptance: package/install the desktop server binaries on the Mac;
+verify key identity, private permissions, lifecycle and listening ports; complete
+account selection UI/client integration; verify direct traversal and relay from
+a different network before claiming internet connectivity. The separate local
+transport/signaling experiments are not included in this deployment. No TURN,
+Durable Object, paid relay, router mapping or production cutover is activated.

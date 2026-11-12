@@ -88,3 +88,9 @@ CREATE TABLE IF NOT EXISTS br_connect_grants (
 );
 CREATE INDEX IF NOT EXISTS br_connect_grants_owner_expiry ON br_connect_grants(user_id,expires_at);
 CREATE INDEX IF NOT EXISTS br_connect_grants_expiry ON br_connect_grants(expires_at);
+CREATE TABLE IF NOT EXISTS br_server_preferences (
+ user_id INTEGER PRIMARY KEY REFERENCES br_users(id) ON DELETE CASCADE,
+ device_id TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ FOREIGN KEY(user_id,device_id) REFERENCES br_devices(user_id,remote_id) ON DELETE CASCADE
+);

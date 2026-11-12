@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import {accountServers} from './servers.mjs';
 export class HttpError extends Error { constructor(message,status=400){super(message);this.status=status;} }
 export const fail=(message,status=400)=>{throw new HttpError(message,status);};
 export const stamp=()=>new Date().toISOString();
@@ -72,8 +73,19 @@ export async function registerDevice(db,u,b){
 }
 export async function strategy(db,u,env,modified=0){
  const opts={...object(env.CLIENT_CONFIG_JSON?parse(env.CLIENT_CONFIG_JSON):env.CLIENT_CONFIG_OPTIONS)};
+ if(env.ACCOUNT_SERVER_SELECTION==='1'){
+ const servers=await accountServers(db,u),selected=servers.find(d=>d.selected);
+ // A report is advisory, never proof of external reachability. Do not silently
+ // substitute a different machine for the owner's explicit selection.
+ const active=selected?(selected.state==='reported-ready'?selected:null):null;
+ opts['custom-rendezvous-server']='';opts['relay-server']='';opts.key='';
+ if(active){const host=active.host;opts['custom-rendezvous-server']=host.includes(':')?host:host+':21116';opts['relay-server']=host.includes(':')?host:host+':21117';opts.key=active.key;}
+ }else{
+ // Compatibility gate: activate selection-based routing only with clients that
+ // retain the authenticated LAN path when there is no ready internet server.
  const row=await db.prepare("SELECT d.device_info FROM br_devices d LEFT JOIN br_presence p ON p.user_id=d.user_id AND p.remote_id=d.remote_id WHERE d.user_id=? AND json_extract(d.device_info,'$.managed_server_running')=1 AND COALESCE(json_extract(d.device_info,'$.managed_server_public_host'),'')<>'' AND COALESCE(p.state,'unknown')<>'offline-reported' ORDER BY COALESCE(p.updated_at,d.last_seen_at) DESC LIMIT 1").bind(u.id).first();
  if(row){const v=parse(row.device_info),host=String(v.managed_server_public_host).trim();opts['custom-rendezvous-server']=host.includes(':')?host:host+':21116';opts['relay-server']=host.includes(':')?host:host+':21117';opts.key=String(v.managed_server_key||'');}
+ }
  // Never send the staging client back to production through an inherited option.
  opts['api-server']=env.BASE_URL;
  const str=JSON.stringify(opts).replace(/\//g,'\\/').replace(/[\u007f-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
