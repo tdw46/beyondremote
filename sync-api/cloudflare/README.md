@@ -62,3 +62,35 @@ register its own system service, or inherit production account tokens. Preserve
 ID/relay/key preferences deliberately during setup; never clone a device's
 identity and run both hosts concurrently. Local unsigned signing checks are not
 proof of GUI launch or sign-in: verify those separately on the installed app.
+
+## Account-only connection staging
+
+The staging desktop shows only Sign in, the account's devices, and Connect.
+Manual IDs, server/key configuration and password connection setup are absent.
+Host permissions, 2FA, recording and display controls remain available. Direct
+traversal and relay are internal transports, not separate user workflows.
+
+Staging clients publish `account_connection: ticket-v1`; old devices are visible
+but require an update before Connect is enabled. A connection uses an authenticated
+`POST /api/v1/connect/grant` with source_id/target_id and then target-side
+`POST /api/v1/connect/authorize`. Only the same account's registered devices are
+eligible. The random ticket is hashed in D1, expires after 60 seconds, is consumed
+atomically once, and requires the original native source session to remain valid.
+No account bearer token is sent to the peer in the new staging protocol. Staging
+hosts refuse password/click fallback after ticket denial. Existing stable builds
+retain their legacy protocol until the coordinated migration is accepted.
+
+A representative local ticket issue + authorization measured 2 Worker requests,
+17 D1 rows read and 5 rows written including indexes, before later bounded cleanup.
+At 10 connections/device/day, 1,000 devices imply 600,000 requests/month and at
+least 1.5M row writes, plus cleanup, login, presence and all other sites. This is
+an assumption, not a traffic forecast. Expired-ticket cleanup runs only on new
+connection intent (max 100 rows per call); no background timer is added. The
+account has Workers Paid already; zero additional service activation is not a
+promise of zero future charges.
+
+Current acceptance limits: the compiled rendezvous/relay endpoints time out from
+both test computers. The Windows C++ setup currently fails catalog loading. Mac
+GUI and local authorization tests do not establish cross-device playback, input,
+NAT traversal, sleep/wake, or relay recovery. Track these separately before any
+stable release or production cutover.

@@ -2719,7 +2719,7 @@ impl LoginConfigHandler {
             Bytes::new()
         };
         let account_access_token = LocalConfig::get_option("access_token");
-        if !account_access_token.is_empty() {
+        if !crate::common::STAGING_BUILD && !account_access_token.is_empty() {
             avatar = format!(
                 "{}{}:{}",
                 BR_ACCOUNT_TOKEN_AVATAR_PREFIX, account_access_token, avatar
@@ -3623,6 +3623,14 @@ fn try_get_password_from_personal_ab(lc: Arc<RwLock<LoginConfigHandler>>, passwo
     }
 }
 
+async fn attach_connection_ticket(lr: &mut LoginRequest) {
+    let source = lr.my_id.split('@').next().unwrap_or(&lr.my_id);
+    // Failure leaves the request without a ticket; staging hosts deny it.
+    if let Some(ticket) = crate::hbbs_http::account::connection_ticket(source, &lr.username).await {
+        lr.avatar = format!("br-grant-v1:{}:{}", ticket, lr.avatar);
+    }
+}
+
 /// Send login message to peer.
 ///
 /// # Arguments
@@ -3639,10 +3647,13 @@ async fn send_login(
     password: Vec<u8>,
     peer: &mut Stream,
 ) {
-    let msg_out = lc
+    let mut msg_out = lc
         .read()
         .unwrap()
         .create_login_msg(os_username, os_password, password);
+    if crate::common::STAGING_BUILD {
+        attach_connection_ticket(msg_out.mut_login_request()).await;
+    }
     allow_err!(peer.send(&msg_out).await);
 }
 
@@ -3708,6 +3719,15 @@ async fn send_switch_login_request(
         ),
         ..Default::default()
     });
+    if crate::common::STAGING_BUILD {
+        attach_connection_ticket(
+            msg_out
+                .mut_switch_sides_response()
+                .lr
+                .mut_or_insert_default(),
+        )
+        .await;
+    }
     allow_err!(peer.send(&msg_out).await);
 }
 

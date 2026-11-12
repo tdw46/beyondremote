@@ -271,6 +271,8 @@ class GroupModel {
               for (final p in data) {
                 final peerPayload = PeerPayload.fromJson(p);
                 final peer = PeerPayload.toPeer(peerPayload);
+                peer.connectionProtocol =
+                    p['connection_protocol']?.toString() ?? '';
                 if (_isSelfPeer(peer, localId)) {
                   continue;
                 }

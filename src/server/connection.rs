@@ -2369,7 +2369,11 @@ impl Connection {
     fn take_account_access_token_from_avatar(lr: &mut LoginRequest) -> String {
         let Some(rest) = lr
             .avatar
-            .strip_prefix(BR_ACCOUNT_TOKEN_AVATAR_PREFIX)
+            .strip_prefix(if crate::common::STAGING_BUILD {
+                "br-grant-v1:"
+            } else {
+                BR_ACCOUNT_TOKEN_AVATAR_PREFIX
+            })
             .map(str::to_owned)
         else {
             return String::new();
@@ -2594,6 +2598,14 @@ impl Connection {
                 }
                 self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
                 return true;
+            }
+
+            if crate::common::STAGING_BUILD {
+                self.send_login_error(
+                    "Sign in to the same BeyondRemote account on both devices, then reconnect.",
+                )
+                .await;
+                return false;
             }
 
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)

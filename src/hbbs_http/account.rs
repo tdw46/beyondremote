@@ -139,6 +139,40 @@ pub struct AuthResult {
     pub auth_body: Option<AuthBody>,
 }
 
+/// Issue a one-use device ticket. The account bearer token stays with the API.
+pub async fn connection_ticket(source_id: &str, target_id: &str) -> Option<String> {
+    let access_token = LocalConfig::get_option("access_token");
+    if access_token.is_empty() {
+        return None;
+    }
+    let api = crate::common::get_api_server(
+        Config::get_option("api-server"),
+        Config::get_option("custom-rendezvous-server"),
+    );
+    if !api.starts_with("https://") {
+        return None;
+    }
+    let url = format!("{}/api/v1/connect/grant", api.trim_end_matches('/'));
+    let response = create_http_client_async_with_url(&url)
+        .await
+        .post(&url)
+        .timeout(Duration::from_secs(10))
+        .bearer_auth(access_token)
+        .json(&json!({"source_id":source_id,"target_id":target_id}))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let data: serde_json::Value = response.json().await.ok()?;
+    let grant = data.get("grant")?.as_str()?;
+    if grant.len() != 64 || !grant.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(grant.to_owned())
+}
+
 pub async fn verify_same_account_device(
     caller_access_token: &str,
     target_access_token: &str,
@@ -163,6 +197,26 @@ pub async fn verify_same_account_device(
     );
     if api_server.trim().is_empty() {
         return false;
+    }
+
+    if crate::common::STAGING_BUILD {
+        if !api_server.starts_with("https://") {
+            return false;
+        }
+        let url = format!(
+            "{}/api/v1/connect/authorize",
+            api_server.trim_end_matches('/')
+        );
+        return create_http_client_async_with_url(&url)
+            .await
+            .post(&url)
+            .timeout(Duration::from_secs(10))
+            .bearer_auth(target_access_token)
+            .json(&json!({"grant":caller_access_token,"source_id":source_id,"target_id":target_id}))
+            .send()
+            .await
+            .map(|response| response.status().is_success())
+            .unwrap_or(false);
     }
 
     let url = format!(

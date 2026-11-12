@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'account_devices_page.dart';
 import 'dart:io';
 import 'dart:convert';
 
@@ -59,6 +60,10 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    if (appName == 'BeyondRemote Staging') {
+      return AccountDevicesPage(
+          permissions: buildHelpCards(stateGlobal.updateUrl.value));
+    }
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
         child: Row(

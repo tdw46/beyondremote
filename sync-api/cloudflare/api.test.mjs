@@ -31,7 +31,9 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  assert.equal((await call('/api/currentUser')).status,401);
  });
  await t.test('owner scoped data and device authentication',async()=>{
- const r=await call('/api/peers',{method:'GET',token:one});assert.equal(r.data.total,1);assert.equal(r.data.data[0].id,'device1');
+ const r=await call('/api/peers',{method:'GET',token:one});assert.equal(r.data.total,1);assert.equal(r.data.data[0].id,'device1');assert.equal(r.data.data[0].connection_protocol,'legacy');
+ await call('/api/currentUser',{token:one,body:{id:'device1',deviceInfo:{account_connection:'ticket-v1'}}});
+ assert.equal((await call('/api/peers',{method:'GET',token:one})).data.data[0].connection_protocol,'ticket-v1');
  assert.equal((await call('/api/beyondremote/device-auth',{token:one,body:{source_id:'device1',target_id:'device2',target_access_token:two}})).status,403);
  assert.equal((await call('/api/beyondremote/device-auth',{token:one,body:{source_id:'device1',target_id:'device1',target_access_token:one}})).status,200);
  });
@@ -102,12 +104,34 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  const event={id:'device1',generation:opened.data.generation,sequence:1,state:'offline-reported'};
  await measure('presence change','/api/v1/presence/event',{token:one,body:event});
  await measure('duplicate event','/api/v1/presence/event',{token:one,body:event});
+ await call('/api/currentUser',{token:one,body:{id:'cost-target'}});
+ const fields={source_id:'device1',target_id:'cost-target'};
+ const grant=await measure('issue connection ticket','/api/v1/connect/grant',{token:one,body:fields});
+ await measure('authorize connection ticket','/api/v1/connect/authorize',{token:one,body:{...fields,grant:grant.data.grant}});
  assert.equal(costs[0].rowsWritten,0);assert.equal(costs[1].rowsWritten,0);assert.equal(costs[4].rowsWritten,0);
  console.log(JSON.stringify({localD1OperationMeasurements:costs}));
  });
  await t.test('logout and disabled accounts deny subsequent access',async()=>{
  assert.equal((await call('/api/logout',{token:one})).status,200);assert.equal((await call('/api/peers',{method:'GET',token:one})).status,401);
  await db.prepare('UPDATE br_users SET status=0 WHERE id=2').run();assert.equal((await call('/api/peers',{method:'GET',token:two})).status,401);
+ });
+ await t.test('one-use connection grants bind both devices and honor logout',async()=>{
+ const source=await login(100),other=await login(101);
+ await call('/api/currentUser',{token:source,body:{id:'second100'}});
+ const fields={source_id:'device100',target_id:'second100'};
+ const issue=()=>call('/api/v1/connect/grant',{token:source,body:fields});
+ let issued=await issue();assert.equal(issued.status,200);assert.equal(issued.data.grant.length,64);
+ assert.equal((await call('/api/v1/connect/authorize',{token:other,body:{...fields,grant:issued.data.grant}})).status,403);
+ assert.equal((await call('/api/v1/connect/authorize',{token:source,body:{...fields,target_id:'device100',grant:issued.data.grant}})).status,400);
+ const authorize=grant=>call('/api/v1/connect/authorize',{token:source,body:{...fields,grant}});
+ assert.equal((await authorize(issued.data.grant)).status,200);
+ assert.equal((await authorize(issued.data.grant)).status,403);
+ issued=await issue();await db.prepare('UPDATE br_connect_grants SET expires_at=? WHERE token_hash=?').bind('2000-01-01',await digest(issued.data.grant)).run();
+ assert.equal((await authorize(issued.data.grant)).status,403);
+ const targetSession=await login(100);issued=await issue();await call('/api/logout',{token:source});
+ assert.equal((await call('/api/v1/connect/authorize',{token:targetSession,body:{...fields,grant:issued.data.grant}})).status,403);
+ assert.equal((await call('/api/v1/connect/grant',{token:other,body:fields})).status,403);
+ const burst=await Promise.all(Array.from({length:25},()=>call('/api/v1/connect/grant',{token:targetSession,body:fields})));assert.equal(burst.filter(r=>r.status===200).length,19);assert.equal(burst.filter(r=>r.status===429).length,6);
  });
  await t.test('environment, errors, crawler and payload guards',async()=>{
  assert.equal((await worker.fetch(new Request('https://api.test/api/beyondremote/ping'),{...env,DATABASE_ROLE:'production'})).status,503);

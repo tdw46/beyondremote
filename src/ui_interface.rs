@@ -54,6 +54,8 @@ pub struct LoginDeviceInfo {
     pub r#type: String,
     pub name: String,
     pub local_ips: Vec<String>,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub account_connection: String,
     pub managed_server_running: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub managed_server_public_host: String,
@@ -1334,6 +1336,11 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
         r#type: "client".to_owned(),
         name: crate::common::hostname(),
         local_ips: local_ipv4s(),
+        account_connection: if crate::common::STAGING_BUILD {
+            "ticket-v1".to_owned()
+        } else {
+            String::new()
+        },
         managed_server_running,
         managed_server_public_host: managed_server_info
             .as_ref()

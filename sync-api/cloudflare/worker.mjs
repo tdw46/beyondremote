@@ -1,4 +1,5 @@
 import {HttpError,fail,body,digest,requireUser,passwordLogin,registerDevice,session,strategy,userPayload,remoteId,paged,stamp} from './core.mjs';
+import {connectRoute} from './connect.mjs';
 import {dataRoute,presence} from './data.mjs';
 import {oauth,providers} from './oauth.mjs';
 const baseHeaders={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
@@ -19,6 +20,7 @@ async function handle(request,env){
   const raw=request.headers.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1]||'';if(raw&&raw.length<=512){const hash=await digest(raw.trim());await db.batch([db.prepare("UPDATE br_presence SET state='offline-reported',updated_at=? WHERE token_hash=? AND state<>'offline-reported'").bind(stamp(),hash),db.prepare('DELETE FROM br_sessions WHERE token_hash=?').bind(hash)]);}return json('');
  }
  const u=await requireUser(db,request);
+ if(method==='POST'&&['/api/v1/connect/grant','/api/v1/connect/authorize'].includes(path))return json(await connectRoute(db,u,path,b));
  if(path==='/api/currentUser'&&method==='POST'){await registerDevice(db,u,b);return json({...userPayload(u),...await strategy(db,u,env,b.modified_at)});}
  if(path==='/api/heartbeat'&&method==='POST'){await registerDevice(db,u,b);return json(await strategy(db,u,env,b.modified_at));}
  if(method==='POST'&&['/api/v1/presence/open','/api/v1/presence/event'].includes(path))return json(await presence(db,u,env,path,b));

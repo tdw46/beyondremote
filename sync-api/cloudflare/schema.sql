@@ -76,3 +76,15 @@ ALTER TABLE br_sessions ADD COLUMN native INTEGER NOT NULL DEFAULT 0;
 
 ALTER TABLE br_auth_requests ADD COLUMN native INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX br_auth_requests_expiry ON br_auth_requests(native,expires_at);
+
+CREATE TABLE IF NOT EXISTS br_connect_grants (
+ token_hash TEXT PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES br_users(id) ON DELETE CASCADE,
+ source_token_hash TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ target_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS br_connect_grants_owner_expiry ON br_connect_grants(user_id,expires_at);
+CREATE INDEX IF NOT EXISTS br_connect_grants_expiry ON br_connect_grants(expires_at);
