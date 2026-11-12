@@ -93,7 +93,9 @@ class _DesktopTabPageState extends State<DesktopTabPage> {
   Widget build(BuildContext context) {
     final tabWidget = Container(
         child: Scaffold(
-            backgroundColor: Colors.transparent,
+            backgroundColor: isWindows
+                ? Theme.of(context).scaffoldBackgroundColor
+                : Colors.transparent,
             body: DesktopTab(
               controller: tabController,
               tail: Offstage(

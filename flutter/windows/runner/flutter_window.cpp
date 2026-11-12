@@ -48,6 +48,17 @@ void ApplyGlassEffect(HWND hwnd, bool dark) {
     return;
   }
 
+  // The window plugin uses layered opacity even at 100%, which prevents Mica.
+  BYTE alpha = 0;
+  DWORD opacity_flags = 0;
+  COLORREF color_key = 0;
+  if (GetLayeredWindowAttributes(hwnd, &color_key, &alpha, &opacity_flags) &&
+      (opacity_flags & LWA_ALPHA) != 0 && alpha == 255) {
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE,
+                      GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & ~WS_EX_LAYERED);
+  }
+
+  bool mica_applied = false;
   if (HMODULE dwm = LoadLibraryW(L"dwmapi.dll")) {
     using DwmSetWindowAttributeFn = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
     using DwmExtendFrameIntoClientAreaFn = HRESULT(WINAPI*)(HWND, const MARGINS*);
@@ -60,9 +71,10 @@ void ApplyGlassEffect(HWND hwnd, bool dark) {
       set_dwm_attribute(hwnd, kDwmUseImmersiveDarkMode, &dark_mode, sizeof(dark_mode));
       const DWORD rounded = 2;
       set_dwm_attribute(hwnd, kDwmWindowCornerPreference, &rounded, sizeof(rounded));
-      const DWORD transient_backdrop = 3;
-      set_dwm_attribute(
-          hwnd, kDwmSystemBackdropType, &transient_backdrop, sizeof(transient_backdrop));
+      // DWMSBT_MAINWINDOW is Mica; do not combine it with legacy accent blur.
+      const DWORD main_window_backdrop = 2;
+      mica_applied = SUCCEEDED(set_dwm_attribute(
+          hwnd, kDwmSystemBackdropType, &main_window_backdrop, sizeof(main_window_backdrop)));
     }
     if (extend_frame) {
       const MARGINS margins = {-1, -1, -1, -1};
@@ -93,8 +105,10 @@ void ApplyGlassEffect(HWND hwnd, bool dark) {
         reinterpret_cast<SetWindowCompositionAttributeFn>(
             GetProcAddress(user32, "SetWindowCompositionAttribute"));
     if (set_window_composition_attribute) {
-      const DWORD tint = dark ? 0x66202020 : 0x66FFFFFF;
-      AccentPolicy policy = {ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, tint, 0};
+      const DWORD tint = dark ? 0xCC202020 : 0xCCFFFFFF;
+      AccentPolicy policy = {
+          mica_applied ? ACCENT_DISABLED : ACCENT_ENABLE_ACRYLICBLURBEHIND,
+          2, tint, 0};
       WindowCompositionAttributeData data = {
           kWindowCompositionAttributeAccentPolicy, &policy, sizeof(policy)};
       set_window_composition_attribute(hwnd, &data);
