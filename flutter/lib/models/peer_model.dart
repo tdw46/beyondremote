@@ -87,6 +87,8 @@ class Peer {
         loginName = json['loginName'] ?? '',
         device_group_name = json['device_group_name'] ?? '',
         note = json['note'] is String ? json['note'] : '',
+        connectionProtocol = json['connection_protocol']?.toString() ?? '',
+        wakeEnabled = json['wake_enabled'] == true,
         sameServer = json['same_server'],
         localIps = _stringList(json['local_ips'] ?? json['info']?['local_ips']),
         managedServerPublicHost = (json['managed_server_public_host'] ??
@@ -114,6 +116,8 @@ class Peer {
       'loginName': loginName,
       'device_group_name': device_group_name,
       'note': note,
+      'connection_protocol': connectionProtocol,
+      'wake_enabled': wakeEnabled,
       'same_server': sameServer,
       'local_ips': localIps,
       'managed_server_public_host': managedServerPublicHost,

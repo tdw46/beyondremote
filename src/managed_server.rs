@@ -137,7 +137,14 @@ pub fn stop_on_shutdown() {
 }
 
 pub extern "C" fn stop_on_shutdown_hook() {
-    stop_on_shutdown();
+    // macOS invokes atexit after main-thread TLS teardown. reqwest and OS
+    // discovery need live TLS; run bounded cleanup on a fresh owned thread.
+    if let Ok(cleanup) = std::thread::Builder::new()
+        .name("connection-server-shutdown".into())
+        .spawn(stop_on_shutdown)
+    {
+        let _ = cleanup.join();
+    }
 }
 
 pub fn handle_command(key: &str, value: &str) {

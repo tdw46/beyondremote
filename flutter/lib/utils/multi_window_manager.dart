@@ -81,7 +81,8 @@ class RustDeskMultiWindowManager {
       windows.removeWhere((id) => !live.contains(id));
     }
     _inactiveWindows.removeWhere((id) => !live.contains(id));
-    _activeWindows.removeWhere((id) => !live.contains(id));
+    _activeWindows
+        .removeWhere((id) => id != kMainWindowId && !live.contains(id));
   }
 
   String _sessionLaunchKey(WindowType type, String remoteId, {int? display}) =>
