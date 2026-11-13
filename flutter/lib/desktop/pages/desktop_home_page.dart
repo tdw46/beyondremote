@@ -107,19 +107,20 @@ class _DesktopHomePageState extends State<DesktopHomePage>
                   'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'));
             },
           ),
-        DeviceAccessStep(
-          title: 'Input Monitoring — keyboard shortcuts',
-          hideWhenGranted: true,
-          description:
-              'Device control already includes keyboard access. If you only want to control another computer, allow Input Monitoring instead.',
-          action: 'Set up Input Monitoring',
-          check: () async => bind.mainIsCanInputMonitoring(prompt: false),
-          request: () async {
-            bind.mainIsCanInputMonitoring(prompt: true);
-            await launchUrl(Uri.parse(
-                'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent'));
-          },
-        ),
+        if (bind.isOutgoingOnly())
+          DeviceAccessStep(
+            title: 'Input Monitoring — keyboard shortcuts',
+            hideWhenGranted: true,
+            description:
+                'Device control already includes keyboard access. If you only want to control another computer, allow Input Monitoring instead.',
+            action: 'Set up Input Monitoring',
+            check: () async => bind.mainIsCanInputMonitoring(prompt: false),
+            request: () async {
+              bind.mainIsCanInputMonitoring(prompt: true);
+              await launchUrl(Uri.parse(
+                  'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent'));
+            },
+          ),
       ];
     }
     if (bind.isOutgoingOnly()) return [];

@@ -98,10 +98,12 @@ Staging packaging now requires a saved Apple signing identity and refuses an ad-
 
 Nested Mach-O helpers and frameworks are signed inside-out, then the application; deep/strict verification and the Apple certificate anchor must pass. Ordinary installs must quit the staging app, preserve a rollback copy, and replace the complete bundle rather than patch a running executable. Never transfer TCC database entries, silently reset permissions, use ad-hoc signing on a missing certificate, or borrow the stable app's bundle ID.
 
-The keyboard check accepts Accessibility's existing listening authority. The redundant Input Monitoring row disappears when access is covered and returns if revoked. Outgoing-only users can still request Input Monitoring without granting incoming device control.
+The keyboard check accepts Accessibility's existing listening authority. Normal Mac setup presents only Screen Recording and mouse/keyboard control. Input Monitoring is offered only for outgoing-only clients, disappears when access is covered, and returns if revoked; these clients do not have to grant incoming device control.
 
 Acceptance requires two differently sealed builds with the same designated requirement, a real grant on the first signed build, a complete-bundle reinstall, and live OS read-back on the second. Matching identity alone is not permission-retention proof.
 
 The first identity listed by Keychain was revoked despite `find-identity -v` accepting it locally. Gatekeeper blocked and trashed that candidate. Packaging now checks the exact certificate with `security verify-cert -p codeSign -R ocsp` before creating output; the revoked-identity negative test passes. The second saved identity passes that check, and its installed 175-file bundle launches normally. No security protection, TCC entry or quarantine policy was changed. Local Developer signing does not pass a public-distribution `spctl` assessment and must not be shipped as a notarized release.
 
 Six permission widget tests, targeted analyzer (only three existing deprecation infos), Python syntax, diff checks and Mac Rust/Flutter release builds pass. Real permission-retention acceptance and the updated Windows install are still pending at this source checkpoint; do not infer them from build/signature success.
+
+Windows remote desktop connects, but its elevated foreground window prevents input from the existing non-elevated staging process. The Mac-only SSH path still times out. The update is not installed there yet: minimize the elevated window, then inspect/reconcile the existing source and run `scripts/windows/rebuild-staging.ps1` against the exact reviewed commit. Do not weaken UAC or widen the SSH firewall rule.
