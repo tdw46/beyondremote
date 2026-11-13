@@ -7342,6 +7342,7 @@ dependencies = [
  "reqwest",
  "ringbuf",
  "rpassword 7.3.1",
+ "roxmltree",
  "rubato",
  "runas",
  "rust-pulsectl",

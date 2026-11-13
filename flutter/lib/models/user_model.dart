@@ -140,6 +140,9 @@ class UserModel {
 
   Future<void> reset({bool resetOther = false}) async {
     await bind.mainSetLocalOption(key: 'access_token', value: '');
+    if (appName == 'BeyondRemote Staging' && isDesktop) {
+      await bind.mainSetCommon(key: 'managed-server-reconcile', value: '');
+    }
     await bind.mainSetLocalOption(key: 'user_info', value: '');
     if (resetOther) {
       await gFFI.abModel.reset();
@@ -336,6 +339,11 @@ class UserModel {
     if (configOptions is! Map<String, dynamic> || configOptions.isEmpty) {
       return false;
     }
+    final selected = configOptions['beyondremote-selected-server-id'];
+    if (selected is String) {
+      await bind.mainSetOption(
+          key: 'beyondremote-selected-server-id', value: selected);
+    }
     final localManagedConfig = await _localManagedServerConfig();
     for (final entry in configOptions.entries) {
       final key = entry.key.toString();
@@ -343,11 +351,55 @@ class UserModel {
       await bind.mainSetOption(
           key: key, value: localValue ?? entry.value?.toString() ?? '');
     }
+    if (appName == 'BeyondRemote Staging' && isDesktop) {
+      await bind.mainSetCommon(key: 'managed-server-reconcile', value: '');
+    }
     return true;
+  }
+
+  Future<List<Map<String, dynamic>>> connectionServers() async {
+    final url = await bind.mainGetApiServer();
+    final response = await http
+        .get(Uri.parse('$url/api/v1/connection-servers'),
+            headers: getHttpHeaders())
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      throw Exception('Could not load connection servers');
+    }
+    final data = jsonDecode(decode_http_response(response));
+    return (data['devices'] as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> selectConnectionServer(String id) async {
+    final url = await bind.mainGetApiServer();
+    final headers = getHttpHeaders()..['Content-Type'] = 'application/json';
+    final response = await http
+        .post(Uri.parse('$url/api/v1/connection-servers/select'),
+            headers: headers, body: jsonEncode({'device_id': id}))
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      throw Exception('Could not change connection server');
+    }
+    final data = jsonDecode(decode_http_response(response));
+    if (data['selected_device_id'] != id) {
+      throw Exception('Server selection was not confirmed');
+    }
+    await bind.mainSetOption(key: 'beyondremote-selected-server-id', value: id);
+    if (isDesktop) {
+      await bind.mainSetCommon(
+          key: 'managed-server-reconcile', value: 'selected');
+    }
+    accountServerConfigRefreshedAt = null;
+    await refreshServerConfigFromAccount(force: true, refreshModels: false);
   }
 
   Future<Map<String, String>> _localManagedServerConfig() async {
     try {
+      if (appName == 'BeyondRemote Staging' &&
+          await bind.mainGetOption(key: 'beyondremote-selected-server-id') !=
+              await bind.mainGetMyId()) {
+        return {};
+      }
       final raw = await bind.mainGetCommon(key: 'managed-server-status');
       final status = jsonDecode(raw);
       if (status is! Map<String, dynamic> ||
@@ -359,6 +411,7 @@ class UserModel {
       return {
         'custom-rendezvous-server': '127.0.0.1:21116',
         'relay-server': '127.0.0.1:21117',
+        'key': status['key']?.toString() ?? '',
       };
     } catch (_) {
       return {};

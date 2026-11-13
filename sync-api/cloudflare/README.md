@@ -109,7 +109,7 @@ Unconfirmed or signed-out hosts do not expose a usable address/key in this API.
 An active session and online report mean only `reported-ready`; actual internet
 reachability must still be tested on connection intent. No timer or poll is added.
 
-Selection-based routing is behind `ACCOUNT_SERVER_SELECTION=1`, currently OFF.
+Selection-based routing uses `ACCOUNT_SERVER_SELECTION=1` in the turn215 release.
 Do not activate until matching desktop clients preserve the authenticated LAN
 path with an empty internet-server configuration and present server setup/status.
 This compatibility gate keeps the current installed clients working. The old
@@ -121,3 +121,39 @@ account selection UI/client integration; verify direct traversal and relay from
 a different network before claiming internet connectivity. The separate local
 transport/signaling experiments are not included in this deployment. No TURN,
 Durable Object, paid relay, router mapping or production cutover is activated.
+
+## Bundled desktop server and setup wizard (turn 215)
+
+The desktop account view includes a server selector and setup wizard. On the
+selected desktop, setup uses bundled, pinned hbbs/hbbr 1.1.16 executables; desktop
+build.py packages them for Windows/macOS/Linux. Mac server builds use the exact
+upstream commit with Rust 1.98 independently of the app's Rust 1.75 toolchain;
+Windows downloads the hash-pinned upstream archive. No runtime Python, hosted
+build service, server download, or router password is required for automatic setup.
+
+UPnP discovery is limited to the OS-reported local gateway, with bounded responses,
+no HTTP redirects/proxy, and fixed TCP 21115–21117 / UDP 21116 targets. Existing
+mappings belonging to another service are refused. Created mappings are read back
+and removed on failure, normal stop or shutdown, after rechecking ownership.
+Crash leftovers are recognized only for the same device/address/port/description.
+The Mac routing-table fallback covers default-net's missing-gateway case.
+Manual public-address setup is available when the owner has configured forwarding
+through their router's own trusted UI. Router passwords are never handled by the
+API. Automatic setup currently targets IPv4 WANIPConnection:1; CGNAT, double NAT,
+guest isolation, unsupported router APIs, firewall permissions and public-IP changes
+remain possible obstacles. A mapping is not proof of an internet desktop session.
+
+Staging server data and keys use a separate owner-only directory. Both server
+processes require the generated key. Existing account-owned device tickets and
+private authorization remain required by the staging remote-control hosts. The
+cloud API is not started on the desktop. Stopping the server pauses it until an
+explicit restart/selection; ordinary refresh does not silently restart it.
+The wizard samples local IPC only while setup is active (at most 90 seconds),
+with no new idle HTTP heartbeat or router renewal timer. Refresh/reconnect applies
+server selection to other clients; there is no claim of immediate push updates.
+
+Validation: 16 isolated API tests; three router-module tests including actual
+create/read-back/remove of all four mappings on the Mac's gateway; Rust 1.75
+release build. Runtime installation, Windows build and cross-network acceptance
+must be recorded separately after they finish. Exploratory transport/signaling
+files from turn214 remain excluded from this release.

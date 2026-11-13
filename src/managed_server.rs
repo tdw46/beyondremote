@@ -6,7 +6,10 @@ use std::{
     io::{self, BufReader},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Mutex, Once},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, Once,
+    },
     time::{Duration, Instant},
 };
 
@@ -22,6 +25,7 @@ lazy_static::lazy_static! {
 }
 
 static SHUTDOWN_HOOK: Once = Once::new();
+static STARTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Default)]
 struct ManagedServer {
@@ -29,10 +33,13 @@ struct ManagedServer {
     hbbr: Option<Child>,
     last_error: String,
     installing: bool,
+    mapping: Option<crate::managed_network::Mapping>,
 }
 
 #[derive(Serialize)]
 struct ManagedStatus {
+    starting: bool,
+    router_mapped: bool,
     supported_install: bool,
     supported_run: bool,
     installed: bool,
@@ -83,7 +90,19 @@ pub fn account_server_info() -> Option<(String, String)> {
 }
 
 pub fn start_if_enabled() {
-    if Config::get_option(OPT_ENABLED) != "Y" {
+    if Config::get_option(OPT_ENABLED) != "Y"
+        || Config::get_option("managed-server-paused") == "Y"
+        || is_running()
+    {
+        return;
+    }
+    if crate::common::STAGING_BUILD
+        && (Config::get_option("beyondremote-selected-server-id") != Config::get_id()
+            || hbb_common::config::LocalConfig::get_option("access_token").is_empty())
+    {
+        return;
+    }
+    if STARTING.swap(true, Ordering::SeqCst) {
         return;
     }
     std::thread::spawn(|| {
@@ -91,6 +110,7 @@ pub fn start_if_enabled() {
             MANAGED.lock().unwrap().last_error = err.to_string();
             log::warn!("Failed to start managed self-hosted server: {}", err);
         }
+        STARTING.store(false, Ordering::SeqCst);
     });
 }
 
@@ -98,7 +118,11 @@ pub fn stop_on_shutdown() {
     let mut managed = MANAGED.lock().unwrap();
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
+    let mapping = managed.mapping.take();
     drop(managed);
+    if let Some(mut mapping) = mapping {
+        mapping.remove();
+    }
     stop_existing_managed_processes(&install_dir());
 }
 
@@ -108,6 +132,53 @@ pub extern "C" fn stop_on_shutdown_hook() {
 
 pub fn handle_command(key: &str, value: &str) {
     match key {
+        "managed-server-reconcile" if crate::common::STAGING_BUILD => {
+            if value == "selected" {
+                Config::set_option("managed-server-paused".to_owned(), String::new());
+            }
+            let selected = Config::get_option("beyondremote-selected-server-id");
+            if selected == Config::get_id()
+                && !hbb_common::config::LocalConfig::get_option("access_token").is_empty()
+            {
+                Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
+                start_if_enabled();
+            } else if Config::get_option(OPT_ENABLED) == "Y" {
+                Config::set_option(OPT_ENABLED.to_owned(), String::new());
+                std::thread::spawn(stop_on_shutdown);
+            }
+        }
+        "managed-server-manual-start" if crate::common::STAGING_BUILD => {
+            let host = value.trim();
+            if Config::get_option("beyondremote-selected-server-id") != Config::get_id()
+                || host.is_empty()
+                || host.len() > 253
+                || !host.contains('.')
+                || !host
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-')
+            {
+                MANAGED.lock().unwrap().last_error =
+                    "Enter a valid public IPv4 address or DNS name for this selected computer."
+                        .to_owned();
+                return;
+            }
+            Config::set_option("managed-server-manual-network".to_owned(), "Y".to_owned());
+            Config::set_option(OPT_PUBLIC_HOST.to_owned(), host.to_owned());
+            Config::set_option("managed-server-paused".to_owned(), String::new());
+            Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
+            clear_last_error();
+            start_if_enabled();
+        }
+        "managed-server-refresh" if crate::common::STAGING_BUILD => {
+            if Config::get_option("beyondremote-selected-server-id") != Config::get_id() {
+                return;
+            }
+            Config::set_option("managed-server-paused".to_owned(), String::new());
+            Config::set_option("managed-server-manual-network".to_owned(), String::new());
+            Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
+            clear_last_error();
+            start_if_enabled();
+        }
         "managed-server-enable" => {
             Config::set_option(
                 OPT_ENABLED.to_owned(),
@@ -156,9 +227,16 @@ pub fn handle_command(key: &str, value: &str) {
             });
         }
         "managed-server-stop" => {
+            if crate::common::STAGING_BUILD {
+                Config::set_option("managed-server-paused".to_owned(), "Y".to_owned());
+            }
             Config::set_option(OPT_ENABLED.to_owned(), "".to_owned());
             clear_last_error();
-            stop_on_shutdown();
+            if crate::common::STAGING_BUILD {
+                std::thread::spawn(stop_on_shutdown);
+            } else {
+                stop_on_shutdown();
+            }
         }
         "managed-server-set-paths" => {
             if let Ok(v) = serde_json::from_str::<Value>(value) {
@@ -184,19 +262,27 @@ pub fn handle_command(key: &str, value: &str) {
 
 fn status() -> ManagedStatus {
     let (hbbs_path, hbbr_path) = server_paths();
-    let installed = hbbs_path.is_file() && hbbr_path.is_file();
+    let installed = (hbbs_path.is_file() && hbbr_path.is_file()) || bundled_paths().is_some();
     let running = is_running();
     let key = read_key().unwrap_or_default();
     let (installing, last_error) = {
         let managed = MANAGED.lock().unwrap();
         (managed.installing, managed.last_error.clone())
     };
-    let message = if !is_run_supported() {
+    let message = if STARTING.load(Ordering::SeqCst) {
+        "Preparing this computer and checking the router…".to_owned()
+    } else if !is_run_supported() {
         "Managed server is available on desktop builds only.".to_owned()
     } else if installing {
         "Installing the open-source self-hosted server...".to_owned()
     } else if !last_error.is_empty() {
         last_error
+    } else if crate::common::STAGING_BUILD && installed {
+        if running {
+            "Server running. Internet reachability still depends on the network.".to_owned()
+        } else {
+            "Bundled server ready. Select this computer to start it automatically.".to_owned()
+        }
     } else if !is_install_supported() {
         "Automatic download is not published for this platform. Choose local hbbs and hbbr binaries to let Beyond Remote manage them.".to_owned()
     } else if !installed {
@@ -213,6 +299,8 @@ fn status() -> ManagedStatus {
     };
 
     ManagedStatus {
+        starting: STARTING.load(Ordering::SeqCst),
+        router_mapped: MANAGED.lock().unwrap().mapping.is_some(),
         supported_install: is_install_supported(),
         supported_run: is_run_supported(),
         installed,
@@ -232,9 +320,18 @@ fn status() -> ManagedStatus {
 }
 
 fn start_and_apply_config() -> ResultType<()> {
-    start()?;
-    if let Err(err) = crate::local_api::start() {
-        log::warn!("Failed to start Beyond Remote account API: {}", err);
+    if let Err(err) = start() {
+        stop_on_shutdown();
+        return Err(err);
+    }
+    if read_key().is_none() || !is_running() {
+        stop_on_shutdown();
+        bail!("Connection server did not become ready");
+    }
+    if !crate::common::STAGING_BUILD {
+        if let Err(err) = crate::local_api::start() {
+            log::warn!("Failed to start Beyond Remote account API: {}", err);
+        }
     }
     apply_client_config();
     Ok(())
@@ -244,12 +341,20 @@ fn start() -> ResultType<()> {
     if !is_run_supported() {
         bail!("Managed server is not supported on this platform");
     }
+    if crate::common::STAGING_BUILD || bundled_paths().is_some() {
+        install_bundled()?;
+    }
     let (hbbs_path, hbbr_path) = server_paths();
     if !hbbs_path.is_file() || !hbbr_path.is_file() {
         bail!("hbbs and hbbr are not installed");
     }
     let work_dir = install_dir();
     fs::create_dir_all(&work_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&work_dir, fs::Permissions::from_mode(0o700))?;
+    }
     SHUTDOWN_HOOK.call_once(|| {
         shutdown_hooks::add_shutdown_hook(stop_on_shutdown_hook);
     });
@@ -271,10 +376,43 @@ fn start() -> ResultType<()> {
     }
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
+    drop(managed);
     stop_existing_managed_processes(&work_dir);
-    managed.hbbr = Some(spawn_server(&hbbr_path, &work_dir, &[])?);
+    let mapping = if crate::common::STAGING_BUILD
+        && Config::get_option("managed-server-manual-network") != "Y"
+    {
+        Some(crate::managed_network::Mapping::establish(
+            &Config::get_id(),
+        )?)
+    } else {
+        None
+    };
+    // Selection/logout may change while router discovery is in flight.
+    if crate::common::STAGING_BUILD
+        && (Config::get_option(OPT_ENABLED) != "Y"
+            || Config::get_option("beyondremote-selected-server-id") != Config::get_id()
+            || hbb_common::config::LocalConfig::get_option("access_token").is_empty())
+    {
+        bail!("Server setup was cancelled");
+    }
+    let mut managed = MANAGED.lock().unwrap();
+    if let Some(mapping) = mapping {
+        Config::set_option(OPT_PUBLIC_HOST.to_owned(), mapping.public_ip.to_string());
+        managed.mapping = Some(mapping);
+    }
+    managed.hbbr = Some(spawn_server(&hbbr_path, &work_dir, &["-k", "_"])?);
+    drop(managed);
+    wait_for_key(Duration::from_secs(8));
+    if crate::common::STAGING_BUILD && Config::get_option(OPT_ENABLED) != "Y" {
+        bail!("Server setup was cancelled");
+    }
+    let mut managed = MANAGED.lock().unwrap();
     let relay_arg = relay_server();
-    managed.hbbs = Some(spawn_server(&hbbs_path, &work_dir, &["-r", &relay_arg])?);
+    managed.hbbs = Some(spawn_server(
+        &hbbs_path,
+        &work_dir,
+        &["-r", &relay_arg, "-k", "_"],
+    )?);
     managed.last_error.clear();
     drop(managed);
     wait_for_key(Duration::from_secs(8));
@@ -486,6 +624,49 @@ fn unzip_archive(archive_path: &Path, target_dir: &Path) -> ResultType<()> {
     Ok(())
 }
 
+fn bundled_paths() -> Option<(PathBuf, PathBuf)> {
+    let executable = std::env::current_exe().ok()?;
+    let parent = executable.parent()?;
+    let root = if cfg!(target_os = "macos") {
+        parent.parent()?.join("Resources").join("connection-server")
+    } else {
+        parent.join("connection-server")
+    };
+    let paths = (root.join(exe_name("hbbs")), root.join(exe_name("hbbr")));
+    if paths.0.is_file() && paths.1.is_file() {
+        Some(paths)
+    } else {
+        None
+    }
+}
+
+fn install_bundled() -> ResultType<()> {
+    let (hbbs,hbbr) = bundled_paths().ok_or_else(|| anyhow::anyhow!("This build does not contain its connection server; install the complete staging package"))?;
+    let dir = install_dir();
+    fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+    }
+    for (source, stem) in [(hbbs, "hbbs"), (hbbr, "hbbr")] {
+        let target = dir.join(exe_name(stem));
+        if !target.is_file() || fs::read(&source)? != fs::read(&target)? {
+            fs::copy(&source, &target)?;
+            make_unix_executable(&target);
+        }
+    }
+    Config::set_option(
+        OPT_HBBS_PATH.to_owned(),
+        dir.join(exe_name("hbbs")).to_string_lossy().to_string(),
+    );
+    Config::set_option(
+        OPT_HBBR_PATH.to_owned(),
+        dir.join(exe_name("hbbr")).to_string_lossy().to_string(),
+    );
+    Ok(())
+}
+
 fn server_paths() -> (PathBuf, PathBuf) {
     let hbbs = Config::get_option(OPT_HBBS_PATH);
     let hbbr = Config::get_option(OPT_HBBR_PATH);
@@ -611,10 +792,17 @@ fn is_local_server(value: &str) -> bool {
 }
 
 fn data_root() -> PathBuf {
+    let app_dir = if crate::common::STAGING_BUILD {
+        "BeyondRemote Staging"
+    } else if cfg!(all(unix, not(target_os = "macos"))) {
+        "beyondremote"
+    } else {
+        "BeyondRemote"
+    };
     #[cfg(target_os = "windows")]
     {
         if let Some(v) = std::env::var_os("LOCALAPPDATA").or_else(|| std::env::var_os("APPDATA")) {
-            return PathBuf::from(v).join("BeyondRemote");
+            return PathBuf::from(v).join(app_dir);
         }
     }
     #[cfg(target_os = "macos")]
@@ -623,22 +811,22 @@ fn data_root() -> PathBuf {
             return PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
-                .join("BeyondRemote");
+                .join(app_dir);
         }
     }
     #[cfg(all(unix, not(target_os = "macos")))]
     {
         if let Some(v) = std::env::var_os("XDG_DATA_HOME") {
-            return PathBuf::from(v).join("beyondremote");
+            return PathBuf::from(v).join(app_dir);
         }
         if let Some(home) = std::env::var_os("HOME") {
             return PathBuf::from(home)
                 .join(".local")
                 .join("share")
-                .join("beyondremote");
+                .join(app_dir);
         }
     }
-    std::env::temp_dir().join("beyondremote")
+    std::env::temp_dir().join(app_dir)
 }
 
 fn exe_name(stem: &str) -> String {

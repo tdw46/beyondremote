@@ -340,6 +340,7 @@ def build_flutter_deb(version, features):
         ffi_bindgen_function_refactor()
     os.chdir('flutter')
     system2('flutter build linux --release')
+    system2(f'python3 ../scripts/package-connection-server.py {flutter_build_dir}')
     system2('mkdir -p tmpdeb/usr/bin/')
     system2('mkdir -p tmpdeb/usr/share/rustdesk')
     system2('mkdir -p tmpdeb/etc/rustdesk/')
@@ -437,6 +438,7 @@ def build_flutter_dmg(version, features):
         f'FLUTTER_XCODE_ARCHS={mac_arch} FLUTTER_XCODE_ONLY_ACTIVE_ARCH=YES flutter build macos --release')
     app_path = './build/macos/Build/Products/Release/BeyondRemote.app'
     system2(f'cp -rf ../target/release/service {app_path}/Contents/MacOS/')
+    system2(f'python3 ../scripts/package-connection-server.py {app_path}')
     ad_hoc_sign_macos_app(app_path)
     '''
     system2(
@@ -452,6 +454,7 @@ def build_flutter_arch_manjaro(version, features):
     ffi_bindgen_function_refactor()
     os.chdir('flutter')
     system2('flutter build linux --release')
+    system2(f'python3 ../scripts/package-connection-server.py {flutter_build_dir}')
     system2(f'strip {flutter_build_dir}/lib/librustdesk.so')
     os.chdir('../res')
     system2('HBB=`pwd`/.. FLUTTER=1 makepkg -f')
@@ -468,6 +471,7 @@ def build_flutter_windows(version, features, skip_portable_pack):
     os.chdir('..')
     shutil.copy2('target/release/deps/dylib_virtual_display.dll',
                  flutter_build_dir_2)
+    system2(f'python scripts/package-connection-server.py {flutter_build_dir_2}')
     if skip_portable_pack:
         return
     os.chdir('libs/portable')

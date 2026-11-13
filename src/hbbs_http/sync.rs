@@ -412,7 +412,8 @@ impl NativePresence {
                         {
                             // A local running managed host always owns its connection configuration.
                             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                            if crate::managed_server::account_server_info().is_some() {
+                            if crate::managed_server::account_server_info().is_some()
+                                && (!crate::common::STAGING_BUILD || strategy.config_options.get("beyondremote-selected-server-id").map(String::as_str) == Some(Config::get_id().as_str())) {
                                 for key in ["custom-rendezvous-server", "relay-server", "key"] {
                                     strategy.config_options.remove(key);
                                 }

@@ -20,7 +20,7 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  const count=r=>{meter.statements++;meter.rowsRead+=r.meta?.rows_read||0;meter.rowsWritten+=r.meta?.rows_written||0;return r;};
  const wrapStatement=raw=>({raw,bind(...v){return wrapStatement(raw.bind(...v));},async first(col){const r=count(await raw.all());return col?r.results[0]?.[col]??null:r.results[0]??null;},async all(){return count(await raw.all());},async run(){return count(await raw.run());}});
  const measuredDB={withSession(){return this;},prepare(sql){return wrapStatement(db.prepare(sql));},async batch(statements){return (await db.batch(statements.map(s=>s.raw))).map(count);}};
- const env={DB:measuredDB,ENVIRONMENT:'staging',DATABASE_ROLE:'staging',BASE_URL:'https://api.test',ALLOW_SIGNUP:'0',LOGIN_LIMIT:{limit:async()=>({success:true})}};
+ const env={DB:measuredDB,ENVIRONMENT:'staging',DATABASE_ROLE:'staging',BASE_URL:'https://api.test',ALLOW_SIGNUP:'0',ACCOUNT_SERVER_SELECTION:'1',LOGIN_LIMIT:{limit:async()=>({success:true})}};
  const call=async(path,{method='POST',token,body={}}={})=>{const r=await worker.fetch(new Request('https://api.test'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(['GET','HEAD'].includes(method)?{}:{body:JSON.stringify(body)})}),env);let text=await r.text();return {status:r.status,headers:r.headers,data:text?JSON.parse(text):null};};
  const login=async n=>{const r=await call('/api/login',{body:{username:'test'+n,password,id:'device'+n,deviceInfo:{name:'Computer '+n,os:'Darwin'}}});assert.equal(r.status,200);return r.data.access_token;};
  const one=await login(1),two=await login(2);
@@ -72,6 +72,7 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  env.ACCOUNT_SERVER_SELECTION='1';
  try{
  let config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
+ assert.equal(config['beyondremote-selected-server-id'],'device1');
  assert.equal(config['custom-rendezvous-server'],'');
  await select('old-server');
  config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
@@ -83,7 +84,7 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  config=(await call('/api/currentUser',{token:one})).data.strategy.config_options;
  assert.equal(config['custom-rendezvous-server'],'');
  await select('device1');
- }finally{delete env.ACCOUNT_SERVER_SELECTION;}
+ }finally{env.ACCOUNT_SERVER_SELECTION='1';}
  });
  await t.test('concurrent partial peer edits preserve fields and explicit null',async()=>{
  await call('/api/ab/peer/add/personal',{token:one,body:{id:'friend',alias:'Original',note:'Keep',tags:['Blue'],custom:{a:1}}});

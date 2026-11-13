@@ -75,6 +75,7 @@ export async function strategy(db,u,env,modified=0){
  const opts={...object(env.CLIENT_CONFIG_JSON?parse(env.CLIENT_CONFIG_JSON):env.CLIENT_CONFIG_OPTIONS)};
  if(env.ACCOUNT_SERVER_SELECTION==='1'){
  const servers=await accountServers(db,u),selected=servers.find(d=>d.selected);
+ opts['beyondremote-selected-server-id']=selected?.id||'';
  // A report is advisory, never proof of external reachability. Do not silently
  // substitute a different machine for the owner's explicit selection.
  const active=selected?(selected.state==='reported-ready'?selected:null):null;

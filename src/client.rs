@@ -290,6 +290,9 @@ impl Client {
                 }
             }
         }
+        if crate::common::STAGING_BUILD && Config::get_option("custom-rendezvous-server").trim().is_empty() {
+            bail!("Your selected connection server is not ready. Open BeyondRemote on that computer and refresh its server setup.");
+        }
         // to-do: remember the port for each peer, so that we can retry easier
         if hbb_common::is_ip_str(peer) {
             return Ok((
