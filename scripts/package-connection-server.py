@@ -15,7 +15,6 @@ import platform
 import shutil
 import subprocess
 import tempfile
-import urllib.request
 import zipfile
 
 REVISION = '73523b31cfd25d77dee862e6fc9f5e1fb5e485ef'
@@ -42,8 +41,13 @@ def main():
         url = f'https://github.com/rustdesk/rustdesk-server/releases/download/{VERSION}/rustdesk-server-windows-x86_64-unsigned.zip'
         with tempfile.TemporaryDirectory(prefix='beyondremote-server-') as temp:
             archive = Path(temp) / 'server.zip'
-            with urllib.request.urlopen(url, timeout=30) as response, archive.open('wb') as output:
-                shutil.copyfileobj(response, output)
+            # The bundled Python runtime can lack Windows' issuer certificates.
+            # Use the OS curl trust store, retain HTTPS verification, and then
+            # verify the exact upstream archive hash before extracting anything.
+            curl = Path(os.environ['SystemRoot']) / 'System32/curl.exe'
+            subprocess.run([str(curl), '--fail', '--location', '--proto', '=https',
+                            '--proto-redir', '=https', '--connect-timeout', '15',
+                            '--max-time', '60', '--output', str(archive), url], check=True)
             if hashlib.sha256(archive.read_bytes()).hexdigest() != WINDOWS_SHA:
                 raise RuntimeError('Server download hash mismatch')
             with zipfile.ZipFile(archive) as zip_file:
