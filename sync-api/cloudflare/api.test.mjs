@@ -217,10 +217,17 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  console.log(JSON.stringify({internetRouteOperations:{...meter}}));
  // UI account refresh has no access to the service process's in-memory mapping.
  const uiInfo={...info,account_public_address:'',account_public_port:0};
+ Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
  await call('/api/currentUser',{token:one,body:{id:'internet-target',deviceInfo:uiInfo}});
+ assert.equal(meter.rowsWritten,0,'An unchanged UI refresh must not rewrite device rows');
  result=await call('/api/v1/connect/route',{token:one,body:fields});
  assert.equal(result.data.public_address,info.account_public_address,'UI refresh must not erase the service route');
  assert.equal(result.data.public_port,45123);
+ await Promise.all([
+  publish({account_public_address:'',account_public_port:0}),
+  ...Array.from({length:8},()=>call('/api/currentUser',{token:one,body:{id:'internet-target',deviceInfo:uiInfo}}))
+ ]);
+ assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'','Concurrent UI refreshes must not resurrect a cleared service route');
  await publish({account_public_address:'',account_public_port:0});
  assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'','Service must still revoke its route');
  await publish({});
