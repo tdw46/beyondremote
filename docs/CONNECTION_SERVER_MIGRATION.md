@@ -415,3 +415,40 @@ Private evidence, exact manifests, source snapshot and rollback bundle are under
 `~/.local/share/beyondremote-migration/turn219/`. The shared BeyondStore tracker
 remains blocked by its unresolved production/source freshness comparison; this
 owning-project tracker records the current work without overwriting that branch.
+
+
+## Turn 220 Google staging configuration and inbound capture — 2026-11-13
+
+- Created the approved **BeyondRemote Staging** Google web OAuth client in the
+  existing Beyond Remote project, with only the exact staging callback and no
+  JavaScript origins. The production client remains unchanged. The generated
+  credential is stored owner-only in the global Beyond Studios credential store,
+  outside Git, and installed as staging Worker secrets. Read-back verifies both
+  Google bindings and the preserved GitHub bindings; live login options now show
+  both providers.
+- After Tyler approved basic Google identity access, the real Google consent and
+  callback completed token exchange/profile lookup. The API returned **Signup
+  unavailable on this preview**, as expected: the source snapshot has password
+  and GitHub accounts but no Google identity, and staging keeps `ALLOW_SIGNUP=0`.
+  This verifies real provider wiring and new-account denial, not successful login
+  to an existing Google account. No email-based account merge or signup-policy
+  change was made. Existing-user Google behavior has the local bundled-worker
+  coverage recorded in turn 219.
+- System Settings now shows Screen & System Audio Recording **ON** for
+  BeyondRemote Staging. It was already on at read-back, so no toggle was needed.
+  At 09:08:18 EST the Mac log records an authorized same-account inbound session
+  and successful capturer initialization. Tyler confirmed the Windows client
+  displays the Mac desktop. This closes the inbound Mac capture gate; it does
+  not claim new audio/input or sleep/wake acceptance.
+- A fresh strict SSH attempt to the saved Windows runner still timed out. The
+  working app connection is independently verified; runner transport restrictions
+  remain intact. Windows still needs the turn 219 logout build and real sleep/wake
+  acceptance. Production-client promotion, final fenced data synchronization and
+  API/DNS cutover remain outstanding; production is not finalized.
+- No new polling, hosted load test, streaming relay or paid service was enabled.
+  Google testing used one bounded sign-in flow and aggregate configuration reads;
+  this is not a new traffic/capacity or shared-account billing measurement.
+
+Evidence: `~/.local/share/beyondremote-migration/turn220/` contains the safe client
+list/capture screenshots, provider-binding read-back and redacted inbound event
+record. Source and shared BeyondStore tracker restrictions from turn 219 remain.
