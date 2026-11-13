@@ -215,6 +215,18 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  let result=await call('/api/v1/connect/route',{token:one,body:fields});
  assert.equal(result.data.public_address,info.account_public_address);assert.equal(result.data.public_port,45123);assert.equal(meter.rowsWritten,0);
  console.log(JSON.stringify({internetRouteOperations:{...meter}}));
+ // UI account refresh has no access to the service process's in-memory mapping.
+ const uiInfo={...info,account_public_address:'',account_public_port:0};
+ await call('/api/currentUser',{token:one,body:{id:'internet-target',deviceInfo:uiInfo}});
+ result=await call('/api/v1/connect/route',{token:one,body:fields});
+ assert.equal(result.data.public_address,info.account_public_address,'UI refresh must not erase the service route');
+ assert.equal(result.data.public_port,45123);
+ await publish({account_public_address:'',account_public_port:0});
+ assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'','Service must still revoke its route');
+ await publish({});
+ await call('/api/currentUser',{token:one,body:{id:'internet-target',deviceInfo:{...uiInfo,account_public_key:'B'.repeat(43)+'='}}});
+ assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'','A new device key must not inherit an old route');
+ await publish({});
  assert.equal((await call('/api/v1/connect/route',{token:two,body:fields})).status,403);
  for(const account_public_address of ['127.0.0.1','169.254.169.254','100.64.0.1','192.168.1.1','256.1.2.3','example.com']){
   await publish({account_public_address});assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'');

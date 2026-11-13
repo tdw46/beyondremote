@@ -14,7 +14,7 @@ const savePeer=(db,uid,p,merge)=>{
 export async function presence(db,u,env,path,b){
  const id=remoteId(b.id);if(!id)fail('Missing device id');
  if(path.endsWith('/open')){
-  await registerDevice(db,u,b);const generation=token(),state=['online-reported','offline-reported','unknown'].includes(b.state)?b.state:'online-reported';
+  await registerDevice(db,u,b,{presence:true});const generation=token(),state=['online-reported','offline-reported','unknown'].includes(b.state)?b.state:'online-reported';
   await db.prepare("INSERT INTO br_presence(user_id,remote_id,generation,token_hash,sequence,state,payload,updated_at) VALUES(?,?,?,?,0,?,'{}',?) ON CONFLICT(user_id,remote_id) DO UPDATE SET generation=excluded.generation,token_hash=excluded.token_hash,sequence=0,state=excluded.state,payload='{}',updated_at=excluded.updated_at").bind(u.id,id,generation,u.token_hash,state,stamp()).run();
   return {generation,sequence:0,...await strategy(db,u,env,b.modified_at)};
  }

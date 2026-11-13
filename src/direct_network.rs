@@ -1,9 +1,6 @@
 //! Per-device direct internet route. Local network observation only; no heartbeat.
 use crate::managed_network::{network_identity, Mapping};
-use hbb_common::{
-    config::{Config, LocalConfig},
-    log,
-};
+use hbb_common::{config::Config, log};
 use std::{
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -38,7 +35,9 @@ pub fn observe() {
     });
 }
 fn reconcile() {
-    let access = LocalConfig::get_option("access_token");
+    // The hosting service does not share the desktop user's LocalConfig.
+    // Use the same IPC-mirrored account identity as native presence.
+    let access = Config::get_option("beyondremote-account-access-token");
     let enabled = !access.is_empty()
         && !hbb_common::config::option2bool("stop-service", &Config::get_option("stop-service"));
     let network = network_identity().ok();
@@ -80,7 +79,7 @@ fn reconcile() {
     match Mapping::establish_direct(&Config::get_id()) {
         Ok((mapping, port)) => {
             if network_identity().ok() != network
-                || LocalConfig::get_option("access_token") != access
+                || Config::get_option("beyondremote-account-access-token") != access
             {
                 return;
             }
