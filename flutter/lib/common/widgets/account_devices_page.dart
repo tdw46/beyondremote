@@ -147,7 +147,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         children: [
           _setupStep(
-              'Computer selected for your account', _serverChoice == _myId),
+              'Computer selected for your account', _selectedServerId == _myId),
           _setupStep(
               'Server software included', _serverStatus['installed'] == true),
           _setupStep('Router permissions and port mappings checked',
