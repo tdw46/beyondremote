@@ -245,3 +245,92 @@ that checkout, with none missing. Their deployment intent has not been reconcile
 in this task. Per that repository's freshness gate, its source/tracker files were
 left untouched. This owning-project record captures current progress without
 overwriting concurrent CommsOpen work.
+
+
+## Turn 218: direct internet connection through the phone hotspot
+
+The failed turn-217 topology is now corrected. Each signed-in desktop can publish
+its own verified direct router mapping; it no longer depends on the selected Mac
+home server remaining at home. On 2026-11-12/13 the Mac joined the iPhone hotspot
+and rendered the Windows laptop desktop across the public internet. Windows
+remained on home Wi-Fi. Remote mouse input worked. Two initial cellular sessions
+completed their account-route/direct-connect stage in approximately 1.4 seconds
+each; these are individual observations, not a latency or capacity guarantee.
+
+The live socket used the phone's private subnet and the home router's public
+IPv4 on the device's assigned high TCP port. The Windows router mapping was read
+back independently and matched its exact owner, internal address and listener.
+Desktop video/input traveled directly between computers with the existing pinned
+key and one-use account authorization. Cloudflare served account/control metadata
+only; no video relay, hosted VPN, paid service, or OS-wide traffic tunnel was added.
+
+### Fixes and protection
+
+- Discover the current physical default route, bind discovery to that interface,
+  and accept router control URLs only on the trusted local gateway.
+- Give each desktop a stable high public TCP port mapped to its authenticated
+  direct listener. Refuse foreign mappings. Reclaim a stale DHCP mapping only
+  when its exact device owner, protocol and internal port match.
+- Clear stale public-route claims on network changes, reconcile the selected
+  local server, and bound discovery/retries locally. No new idle hosted polling.
+- Publish public endpoints only for the signed-in account's ready device with a
+  live linked session. Cross-account and revoked-session tests still deny access.
+- Preserve the main window when pruning closed remote windows. Run shutdown
+  cleanup on a fresh thread rather than after main-thread TLS destruction.
+- Preserve connection/wake capability fields through Dart group serialization,
+  peer copies, and the native encrypted cache reader; server checks remain
+  authoritative even when the UI uses cached capability information.
+
+### Operations and recovery
+
+The isolated account-route fixture changed from two statements/six rows read to
+three statements/eight rows read, with zero writes. Per 1,000 explicit route
+lookups this adds about 2,000 rows read; per 100,000 lookups about 200,000. The
+Worker request count for the lookup is unchanged. Existing grant, authorize and
+wake costs remain additional. Router discovery and media streaming run on the
+user's devices/network, not Cloudflare. Shared account limits still apply to
+control traffic; no metered load test or new paid plan was enabled.
+
+API permission tests (18), local router validation tests (3), and Dart cache
+round-trip/copy tests (2) passed. Desktop builds preserve Windows Mica styling.
+Private build/install manifests, socket/route evidence and rollback bundles are
+under `~/.local/share/beyondremote-migration/turn218/` and the Windows handoff
+logs/artifacts. Final installed-build acceptance is recorded below.
+
+This proves Mac-on-cellular to awake Windows-at-home with this UPnP-capable home
+router. It does not certify every router/CGNAT topology, an always-on iOS server,
+or waking a physically sleeping machine. The existing authenticated wake flow
+still requires a reachable awake helper on the target LAN. Inbound Mac screen
+capture remains subject to macOS's Screen Recording permission.
+
+
+### Final installed-build acceptance
+
+Final native source `bb580964ef566a373747bc8dc603ca51400af47f` was built and
+installed on both desktops. All 175 Mac bundle files matched the release
+manifest, and deep/strict code-signature verification passed. The Windows
+installer verified each source and destination hash before launching its final
+build. Existing staging identities/settings and Windows Mica styling remained.
+
+At 00:12:50 and 00:13:46 EST on November 13, the final Mac build connected from
+the iPhone hotspot to Windows at home; native route-to-direct connection times
+were 1.427 and 1.362 seconds. The Windows desktop rendered, remote mouse/scroll
+input changed its UI, and both toolbar disconnect and native window close
+returned to the device list. Mac PID 91660 stayed alive through both cellular
+sessions and the subsequent return-home LAN session at 00:19:41. No manual device
+refresh, app restart, VPN client, relay selection or address entry was needed
+for these reconnections. Cache restoration was separately checked after a clean
+quit/relaunch. No new Mac crash report appeared after the shutdown fix.
+
+Home Wi-Fi and ordinary DHCP were restored (the temporary SSH-compatible manual
+address was removed). The local bundled server processes recovered, and the
+per-device public route was verified again after returning home. Phone hotspot
+UPnP failure is expected and bounded; outbound connection to the home device
+still works. The strict Windows SSH source restriction was left intact, so later
+SSH development may need the separately authorized pairing/source-address work;
+this does not affect the verified app connection.
+
+The final session was disconnected, leaving BeyondRemote Staging ready on its
+device list. Stable production app installations were not replaced. The shared
+BeyondStore tracker gate above remains; this owning-project tracker and private
+evidence are the current authoritative record for these connection fixes.
