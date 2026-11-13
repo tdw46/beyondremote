@@ -51,6 +51,8 @@ mod managed_server;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod managed_network;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+mod direct_network;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod wake;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod local_api;

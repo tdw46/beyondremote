@@ -20,7 +20,7 @@ pub struct Mapping {
     url: url::Url,
     local: Ipv4Addr,
     owner: String,
-    ports: Vec<(&'static str, u16)>,
+    ports: Vec<(&'static str, u16, u16)>,
     pub public_ip: Ipv4Addr,
 }
 
@@ -106,13 +106,31 @@ fn default_gateway() -> ResultType<Ipv4Addr> {
     bail!("Could not identify the router. Connect to a local network and retry setup.")
 }
 
+/// OS-only network observation. No packet is sent by UDP connect.
+pub fn network_identity() -> ResultType<(Ipv4Addr, Ipv4Addr)> {
+    let gateway = default_gateway()?;
+    let socket = UdpSocket::bind("0.0.0.0:0")?;
+    socket.connect((gateway, 1900))?;
+    match socket.local_addr()? {
+        SocketAddr::V4(local) => Ok((gateway, *local.ip())),
+        _ => bail!("IPv4 network unavailable"),
+    }
+}
+
+fn direct_port(device: &str) -> u16 {
+    let hash = device.bytes().fold(2166136261u32, |hash, b| {
+        (hash ^ u32::from(b)).wrapping_mul(16777619)
+    });
+    40000 + (hash % 20000) as u16
+}
+
 impl Mapping {
-    pub fn establish(device: &str) -> ResultType<Self> {
+    fn discover(device: &str, direct: bool) -> ResultType<Self> {
         if device.is_empty() || !device.bytes().all(|b| b.is_ascii_alphanumeric()) {
             bail!("A registered device is required for automatic server setup");
         }
-        let socket = UdpSocket::bind("0.0.0.0:0")?;
-        let gateway = default_gateway()?;
+        let (gateway, local_ip) = network_identity()?;
+        let socket = UdpSocket::bind((local_ip, 0))?;
         let deadline = Instant::now() + Duration::from_secs(3);
         socket.send_to(b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\nMX: 1\r\nST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n", "239.255.255.250:1900")?;
         let mut location = None;
@@ -176,7 +194,10 @@ impl Mapping {
             client,
             url,
             local: *local.ip(),
-            owner: format!("BeyondRemote-Staging-{device}"),
+            owner: format!(
+                "BeyondRemote-{}-{device}",
+                if direct { "Direct" } else { "Staging" }
+            ),
             ports: Vec::new(),
             public_ip: Ipv4Addr::UNSPECIFIED,
         };
@@ -187,13 +208,25 @@ impl Mapping {
         if !public_ipv4(mapping.public_ip) {
             bail!("This router is behind another private network; internet setup needs an upstream route");
         }
+        Ok(mapping)
+    }
+
+    pub fn establish(device: &str) -> ResultType<Self> {
+        let mut mapping = Self::discover(device, false)?;
         for (protocol, port) in PORTS {
-            if let Err(e) = mapping.add(protocol, port) {
+            if let Err(e) = mapping.add(protocol, port, port) {
                 mapping.remove();
                 return Err(e);
             }
         }
         Ok(mapping)
+    }
+
+    pub fn establish_direct(device: &str) -> ResultType<(Self, u16)> {
+        let mut mapping = Self::discover(device, true)?;
+        let port = direct_port(device);
+        mapping.add("TCP", port, 21128)?;
+        Ok((mapping, port))
     }
 
     fn soap(&self, action: &str, args: &str) -> ResultType<String> {
@@ -219,35 +252,58 @@ impl Mapping {
                     == Some(self.owner.as_str()),
         )
     }
-    fn add(&mut self, protocol: &'static str, port: u16) -> ResultType<()> {
+    fn add(&mut self, protocol: &'static str, port: u16, internal: u16) -> ResultType<()> {
         let identity = Self::identity_args(protocol, port);
         let current = self.soap("GetSpecificPortMappingEntry", &identity)?;
-        if self.owned(&current, port)? {
-            self.ports.push((protocol, port));
+        if self.owned(&current, internal)? {
+            self.ports.push((protocol, port, internal));
             return Ok(());
         }
-        if xml_value(&current, "errorCode")?.as_deref() != Some("714") {
+        // A DHCP address change may leave our exact named mapping behind.
+        // Reclaim only our device's protocol/port/description, never a foreign rule.
+        let previous_owned = xml_value(&current, "NewPortMappingDescription")?.as_deref()
+            == Some(self.owner.as_str())
+            && xml_value(&current, "NewInternalPort")?.as_deref()
+                == Some(internal.to_string().as_str())
+            && xml_value(&current, "NewInternalClient")?
+                .and_then(|s| s.parse::<Ipv4Addr>().ok())
+                .map_or(false, |ip| ip.is_private());
+        if previous_owned {
+            let removed = self.soap("DeletePortMapping", &identity)?;
+            if xml_value(&removed, "errorCode")?.is_some() {
+                bail!("Could not replace our previous router mapping");
+            }
+        } else if xml_value(&current, "errorCode")?.as_deref() != Some("714") {
             bail!(
                 "Port {port}/{protocol} already belongs to another service, or cannot be inspected"
             );
         }
-        let args = format!("{identity}<NewInternalPort>{port}</NewInternalPort><NewInternalClient>{}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>{}</NewPortMappingDescription><NewLeaseDuration>0</NewLeaseDuration>",self.local,self.owner);
+        let args = format!("{identity}<NewInternalPort>{internal}</NewInternalPort><NewInternalClient>{}</NewInternalClient><NewEnabled>1</NewEnabled><NewPortMappingDescription>{}</NewPortMappingDescription><NewLeaseDuration>0</NewLeaseDuration>",self.local,self.owner);
         let result = self.soap("AddPortMapping", &args)?;
         if xml_value(&result, "errorCode")?.is_some() {
             bail!("Router refused automatic port setup");
         }
-        self.ports.push((protocol, port));
-        if !self.owned(&self.soap("GetSpecificPortMappingEntry", &identity)?, port)? {
+        self.ports.push((protocol, port, internal));
+        if !self.owned(
+            &self.soap("GetSpecificPortMappingEntry", &identity)?,
+            internal,
+        )? {
             bail!("Router port setup could not be verified");
         }
         Ok(())
     }
     pub fn remove(&mut self) {
-        for (protocol, port) in self.ports.drain(..).collect::<Vec<_>>() {
+        // Do not send cleanup to a different router after roaming. The old rule
+        // still has account authentication; it is reconciled when we return.
+        if network_identity().map(|(_, ip)| ip).ok() != Some(self.local) {
+            self.ports.clear();
+            return;
+        }
+        for (protocol, port, internal) in self.ports.drain(..).collect::<Vec<_>>() {
             let identity = Self::identity_args(protocol, port);
             match self
                 .soap("GetSpecificPortMappingEntry", &identity)
-                .and_then(|xml| self.owned(&xml, port))
+                .and_then(|xml| self.owned(&xml, internal))
             {
                 Ok(true) => {
                     if let Err(e) = self.soap("DeletePortMapping", &identity).and_then(|xml| {
@@ -271,6 +327,17 @@ impl Mapping {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn direct_ports_are_stable_and_separate_from_server_ports() {
+        for id in ["236321073", "435194431", "405176576"] {
+            let port = direct_port(id);
+            assert!((40000..60000).contains(&port));
+            assert_eq!(port, direct_port(id));
+            assert!(!PORTS.iter().any(|(_, p)| *p == port));
+        }
+        assert_ne!(direct_port("236321073"), direct_port("435194431"));
+    }
+
     #[test]
     fn reject_non_public_routes() {
         for ip in [
@@ -307,7 +374,7 @@ mod tests {
             "192.168.4.1"
         );
         let mut mapping = Mapping::establish("236321073").unwrap();
-        assert_eq!(mapping.ports.len(), 4);
+        assert_eq!(mapping.ports.len(), PORTS.len());
         mapping.remove();
         for (protocol, port) in PORTS {
             let xml = mapping

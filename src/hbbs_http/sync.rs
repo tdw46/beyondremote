@@ -99,6 +99,8 @@ async fn start_hbbs_sync_async() {
         tokio::select! {
             _ = interval.tick() => {
                 crate::wake::dispatch_pending();
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                crate::direct_network::observe();
                 let url = heartbeat_url();
                 let id = Config::get_id();
                 if url.is_empty() {
@@ -344,7 +346,7 @@ impl NativePresence {
             };
         }
         let stopped = config::option2bool("stop-service", &Config::get_option("stop-service"));
-        let state = if stopped || config::get_online_state() <= 0 {
+        let state = if stopped || (!crate::common::STAGING_BUILD && config::get_online_state() <= 0) {
             "offline-reported"
         } else {
             "online-reported"

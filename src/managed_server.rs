@@ -114,6 +114,16 @@ pub fn start_if_enabled() {
     });
 }
 
+/// Called only on an OS-observed route change, on a dedicated blocking thread.
+pub fn network_changed() {
+    if !crate::common::STAGING_BUILD || Config::get_option(OPT_ENABLED) != "Y" {
+        return;
+    }
+    Config::set_option(OPT_PUBLIC_HOST.to_owned(), String::new());
+    stop_on_shutdown();
+    start_if_enabled();
+}
+
 pub fn stop_on_shutdown() {
     let mut managed = MANAGED.lock().unwrap();
     stop_child(managed.hbbs.take());

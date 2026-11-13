@@ -187,13 +187,32 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  const fields={source_id:'device1',target_id:'lan-target'};
  Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
  const r=await call('/api/v1/connect/route',{token:one,body:fields});assert.equal(r.status,200);
- assert.deepEqual(r.data,{port:21128,public_address:'',public_key:key,addresses:['192.168.1.2','10.0.0.2','172.16.0.1','10.0.0.3']});assert.equal(meter.rowsWritten,0);
+ assert.deepEqual(r.data,{port:21128,public_address:'',public_port:21128,public_key:key,addresses:['192.168.1.2','10.0.0.2','172.16.0.1','10.0.0.3']});assert.equal(meter.rowsWritten,0);
  console.log(JSON.stringify({routeOperations:{...meter}}));
  assert.equal((await call('/api/v1/connect/route',{body:fields})).status,401);
  assert.equal((await call('/api/v1/connect/route',{token:two,body:fields})).status,403);
  assert.equal((await call('/api/v1/connect/route',{token:one,body:{...fields,source_id:'device2'}})).status,403);
  await call('/api/currentUser',{token:one,body:{id:'lan-target',deviceInfo:{account_connection:'ticket-v1',account_direct_port:22,account_public_key:key,local_ips:['192.168.1.2']}}});
  assert.deepEqual((await call('/api/v1/connect/route',{token:one,body:fields})).data.addresses,[]);
+ });
+ await t.test('unselected desktop internet route requires current owner session and safe public endpoint',async()=>{
+ const info={os:'Windows',account_connection:'ticket-v1',account_direct_port:21128,account_public_key:'A'.repeat(43)+'=',account_public_address:'47.203.39.150',account_public_port:45123};
+ const fields={source_id:'device1',target_id:'internet-target'};
+ const publish=extra=>call('/api/v1/presence/open',{token:one,body:{id:'internet-target',deviceInfo:{...info,...extra},state:'online-reported'}});
+ await publish({});
+ Object.assign(meter,{statements:0,rowsRead:0,rowsWritten:0});
+ let result=await call('/api/v1/connect/route',{token:one,body:fields});
+ assert.equal(result.data.public_address,info.account_public_address);assert.equal(result.data.public_port,45123);assert.equal(meter.rowsWritten,0);
+ console.log(JSON.stringify({internetRouteOperations:{...meter}}));
+ assert.equal((await call('/api/v1/connect/route',{token:two,body:fields})).status,403);
+ for(const account_public_address of ['127.0.0.1','169.254.169.254','100.64.0.1','192.168.1.1','256.1.2.3','example.com']){
+  await publish({account_public_address});assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'');
+ }
+ await publish({account_public_port:22});assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'');
+ await publish({});
+ await db.prepare("UPDATE br_presence SET token_hash='revoked' WHERE user_id=1 AND remote_id='internet-target'").run();
+ assert.equal((await call('/api/v1/connect/route',{token:one,body:fields})).data.public_address,'');
+ await db.prepare("DELETE FROM br_devices WHERE user_id=1 AND remote_id='internet-target'").run();
  });
  await t.test('measure operation cost of representative actions',async()=>{
  const costs=[];

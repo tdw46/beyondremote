@@ -9,13 +9,18 @@ export async function connectRoute(db,u,path,b){
   const info=parse(rows.find(d=>d.remote_id===target).device_info);
   const privateIp=ip=>{if(typeof ip!=='string'||!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip))return false;const a=ip.split('.').map(Number);return a.every(n=>n<=255)&&(a[0]===10||a[0]===172&&a[1]>=16&&a[1]<=31||a[0]===192&&a[1]===168);};
   const ready=info.account_connection==='ticket-v1'&&info.account_direct_port===21128&&typeof info.account_public_key==='string'&&/^[A-Za-z0-9+/]{43}=$/.test(info.account_public_key);
-  let public_address='';
-  if(ready&&info.wake_helper==='wake-v1'&&info.managed_server_running===true){
+  let public_address='',public_port=21128;
+  const publicIp=ip=>{if(typeof ip!=='string'||!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip))return false;const [a,b,c,...rest]=ip.split('.').map(Number);return [a,b,c,...rest].every(n=>n<=255)&&!privateIp(ip)&&a>0&&a<224&&a!==127&&!(a===169&&b===254)&&!(a===100&&b>=64&&b<=127)&&!(a===192&&b===0)&&!(a===198&&(b===18||b===19||b===51&&c===100))&&!(a===203&&b===0&&c===113);};
+  if(ready&&publicIp(info.account_public_address)&&Number.isInteger(info.account_public_port)&&info.account_public_port>=40000&&info.account_public_port<60000){
+   const active=await db.prepare(`SELECT 1 FROM br_presence p JOIN br_sessions s ON s.token_hash=p.token_hash AND s.user_id=p.user_id AND s.native=1 AND julianday(s.expires_at)>julianday(?) WHERE p.user_id=? AND p.remote_id=? AND p.state='online-reported'`).bind(stamp(),u.id,target).first();
+   if(active){public_address=info.account_public_address;public_port=info.account_public_port;}
+  }
+  if(!public_address&&ready&&info.wake_helper==='wake-v1'&&info.managed_server_running===true){
    const selected=await db.prepare('SELECT 1 FROM br_server_preferences WHERE user_id=? AND device_id=?').bind(u.id,target).first();
    const host=String(info.managed_server_public_host||'').split(':')[0];
    if(selected&&/^[a-zA-Z0-9.-]{1,253}$/.test(host))public_address=host;
   }
-  return {port:21128,public_address,public_key:ready?info.account_public_key:'',addresses:ready&&Array.isArray(info.local_ips)?[...new Set(info.local_ips.filter(privateIp))].slice(0,4):[]};
+  return {port:21128,public_address,public_port,public_key:ready?info.account_public_key:'',addresses:ready&&Array.isArray(info.local_ips)?[...new Set(info.local_ips.filter(privateIp))].slice(0,4):[]};
  }
  if(path.endsWith('/grant')){
   const devices=(await db.prepare('SELECT remote_id FROM br_devices WHERE user_id=? AND remote_id IN(?,?)').bind(u.id,source,target).all()).results;

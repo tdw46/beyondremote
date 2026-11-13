@@ -67,6 +67,23 @@ class RustDeskMultiWindowManager {
   final List<int> _terminalWindows = List.empty(growable: true);
   final Map<String, Future<MultiWindowCallResult>> _pendingSessions = {};
 
+  Future<void> _pruneClosedWindows() async {
+    // Closing the native window can bypass the Flutter unregister callback.
+    // Never reuse a destroyed engine on a later Connect action.
+    final live = (await DesktopMultiWindow.getAllSubWindowIds()).toSet();
+    for (final windows in [
+      _remoteDesktopWindows,
+      _fileTransferWindows,
+      _viewCameraWindows,
+      _portForwardWindows,
+      _terminalWindows
+    ]) {
+      windows.removeWhere((id) => !live.contains(id));
+    }
+    _inactiveWindows.removeWhere((id) => !live.contains(id));
+    _activeWindows.removeWhere((id) => !live.contains(id));
+  }
+
   String _sessionLaunchKey(WindowType type, String remoteId, {int? display}) =>
       '${type.index}:$remoteId:${display ?? ''}';
 
@@ -206,6 +223,7 @@ class RustDeskMultiWindowManager {
     String msg, {
     Rect? screenRect,
   }) async {
+    await _pruneClosedWindows();
     if (openInTabs) {
       if (windows.isEmpty) {
         final windowId = await newSessionWindow(
@@ -267,6 +285,7 @@ class RustDeskMultiWindowManager {
     if (connToken != null) {
       params['connToken'] = connToken;
     }
+    await _pruneClosedWindows();
     final msg = jsonEncode(params);
     final launchKey = _sessionLaunchKey(type, remoteId);
 

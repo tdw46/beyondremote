@@ -58,6 +58,8 @@ pub struct LoginDeviceInfo {
     pub account_connection: String,
     pub account_direct_port: u16,
     pub account_public_key: String,
+    pub account_public_address: String,
+    pub account_public_port: u16,
     pub managed_server_running: bool,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub wake_profiles: Vec<crate::wake::Profile>,
@@ -1339,6 +1341,10 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let managed_server_info: Option<(String, String)> = None;
     let managed_server_running = managed_server_info.is_some();
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let direct = crate::direct_network::endpoint().unwrap_or_default();
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    let direct: (String, u16) = Default::default();
     LoginDeviceInfo {
         // std::env::consts::OS is better than whoami::platform() here.
         os: std::env::consts::OS.to_owned(),
@@ -1362,6 +1368,8 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
         } else {
             String::new()
         },
+        account_public_address: direct.0,
+        account_public_port: direct.1,
         managed_server_running,
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         wake_profiles: crate::wake::profiles(),

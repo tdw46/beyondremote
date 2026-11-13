@@ -290,11 +290,21 @@ impl Client {
                     if !local && !public {
                         continue;
                     }
-                    let endpoint = format!("{}:{}", address, route.port);
-                    if let Ok(mut conn) = connect_tcp_local(endpoint, None, 600).await {
+                    let port = if public && route.public_port >= 1024 {
+                        route.public_port
+                    } else {
+                        route.port
+                    };
+                    let endpoint = format!("{}:{}", address, port);
+                    if let Ok(mut conn) =
+                        connect_tcp_local(endpoint, None, if public { 5000 } else { 600 }).await
+                    {
                         // A reachable wrong host must fail closed, never fall back to plaintext.
                         Self::secure_account_connection(peer, &pk, &mut conn).await?;
-                        log::info!("Account private connection established directly");
+                        log::info!(
+                            "Account private connection established directly ({})",
+                            if public { "internet" } else { "LAN" }
+                        );
                         return Ok((
                             (conn, true, Some(pk), None, "TCP"),
                             (0, String::new()),

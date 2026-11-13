@@ -144,6 +144,8 @@ pub struct AuthResult {
 pub struct AccountRoute {
     #[serde(default)]
     pub public_address: String,
+    #[serde(default)]
+    pub public_port: u16,
     pub addresses: Vec<String>,
     pub port: u16,
     pub public_key: String,
