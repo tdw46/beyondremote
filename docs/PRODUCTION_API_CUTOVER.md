@@ -1,7 +1,10 @@
 # BeyondRemote production API cutover checklist
 
-Status: prepared, **not authorized by a passing rehearsal alone**. Production
-still serves the PostgreSQL API on InMotion. Do not cancel the host yet.
+Status: **production API and database cut over to Cloudflare on November 13,
+2026**. The checklist below records the procedure; current acceptance and the
+pending DNS-bridge retirement are in [the cutover tracker](API_MIGRATION_227.md).
+InMotion retains a temporary database-free forwarding bridge and other sites.
+Do not cancel the host yet. A passing rehearsal alone is not release authorization.
 
 ## Destination preparation
 

@@ -33,6 +33,38 @@ then retire the bridge and production workers.dev transport alias together.
 Source backups remain private outside the webroot. After native writes, any
 rollback requires reconciling new D1 state; never restore stale PostgreSQL.
 
+### Bridge retirement check — November 13, 16:29 Eastern
+
+**Retained pending DNS cache expiry.** The Mac resolver, Cloudflare, Google and
+Quad9 all return Cloudflare addresses, and the parent delegation names the two
+Cloudflare nameservers. However, only about 23 minutes had elapsed since cutover.
+The old zone's NS TTL was 14,400 seconds; its API A-record TTL was 900 seconds.
+The old authoritative nameserver still returns InMotion. Successful recursive
+samples do not prove every resolver has discarded its older delegation.
+
+Eleven bounded normal-DNS HTTP checks passed (96–270ms): D1 health, both login
+options, robots, guest/invalid-token denials and the original Mac session's
+users/peers/address book. The two original account records retain all compared
+identity, password-hash, role and status fields. That direct D1 comparison read
+four rows and wrote zero; database allocation remains 163,840 bytes. The deployed
+Worker and bridge hashes match the accepted cutover.
+
+The accessible legacy logs contain no requests after cutover, but their newest
+entry is 20:57:03 UTC, before the switch. This is **not proof of zero bridge
+traffic**: freshness/flush coverage must be established before retirement.
+
+At Tyler's request, the one-shot `beyondremote-dns-bridge-retirement` task is
+scheduled for **November 13 at 20:30 America/New_York**: after the four-hour NS
+window plus 15-minute record TTL and a small margin. It must repeat DNS, traffic,
+source freshness and account/privacy checks, then retire the exact PHP bridge
+and production transport alias together only if those gates pass. Preserve
+rollback evidence, remove the obsolete production transport configuration, and
+verify canonical access again. If a gate fails, keep the working bridge and
+report it; do not automatically extend the task or restore stale PostgreSQL.
+The independent November 14–20 daily monitoring schedule is unchanged.
+
+Evidence: `~/.local/share/beyondremote-migration/turn229/retirement-check.json`.
+
 Daily read-only checks are scheduled November 14–20 at 09:15 America/New_York,
 seven runs only, under `beyondremote-post-migration-performance-and-cost-checks`.
 Windows elevation/service-route recovery remains deferred; no app install or
@@ -40,7 +72,7 @@ remote-desktop streaming was moved through Cloudflare in this cutover.
 
 ## Verified preparation
 
-- Live PHP SHA256 remains `0ca083cc4ef8a5db3a82cbd7b2a5f9a61af8d9435f4e6541ad83b814f1c6bb11`;
+- Before cutover, legacy PHP SHA256 was `0ca083cc4ef8a5db3a82cbd7b2a5f9a61af8d9435f4e6541ad83b814f1c6bb11`;
   `.htaccess` remains `7f297c6b3aad8f629b51bac9a17645f4360782ba6aa255ae5e25765e75105bb1`.
 - Current consistent snapshot: 2 users, 12 sessions, 19 OAuth requests,
   0 legacy address books, 4 personal peers, 2 tags and 4 devices: **43 records**.
@@ -107,6 +139,30 @@ Flip2Tasty's legacy blog/StellarGallery/StellarVacationEscape surfaces. Preserve
 data and features: directory listings or failing pages are not retirement approval.
 HAB and mail retain their separate monitoring. Do not cancel InMotion while other
 sites or the propagation bridge still depend on it.
+
+Next-site assessment has started for `tylerdillonwalker.com`: public WordPress/
+Salient pages and media, the Mandarin study app, and the owner-only finance app
+with Google sign-in, Plaid and SimpleFIN must migrate together without losing
+their distinct access rules. Read-only inventory measured 1,051,297,527 bytes
+under uploads and 1,110,547,071 bytes under study, before deduplication/optimization;
+these are source allocations, not proposed R2 usage. The private finance directory
+has 17 files totaling 9,000,970 bytes, including three sessions; no private content
+or credentials were exported. Thirty-six selected application/theme files match
+the Mac, but live Git has 1,742 dirty entries and a different committed tip.
+Reconcile that evidence before source changes or a staging build; do not commit
+the live tree wholesale or push this site's deploy-on-push remote during planning.
+Fresh strict-SSH fetch found nine live-only commits and zero Mac-only commits;
+the dirty set is mostly Jetpack plus study audio/dictionary and other plugin
+updates. Guest finance APIs retain 401/private-no-store behavior. The study app
+has four PHP dictionary endpoints, so a static copy alone would lose features.
+The source media inventory also includes study corpora/intermediate files that
+need classification before publication; copying the whole tree is not a release.
+Private assessment: `~/.local/share/beyond-studios/migrations/tylerdillonwalker/`.
+
+Tyler authorized removal of the obsolete commissions page during this assessment.
+Page 5879 was moved from published to WordPress Trash with a private page/metadata
+recovery copy outside the webroot. No shared media or source files were removed.
+Exclude it from migration publication; preserve current external commission links.
 
 ## Edge protection and scope
 
