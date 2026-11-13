@@ -30,13 +30,13 @@ export async function wakeRoute(db,u,path,b){
   if(!row||info.wake_helper!=='wake-v1'||info.managed_server_running!==true||!sameNetwork(profiles,info.local_ips)||!/^([A-Za-z0-9+/]{43}=)$/.test(info.account_public_key||''))fail('Keep another home computer awake as your connection server',409);
   const grant=token();
   const result=await db.batch([
-   db.prepare('DELETE FROM br_wake_grants WHERE token_hash IN(SELECT token_hash FROM br_wake_grants WHERE expires_at<=? LIMIT 100)').bind(stamp()),
+   db.prepare('DELETE FROM br_wake_grants WHERE user_id=? AND expires_at<=?').bind(u.id,stamp()),
    // Includes consumed grants: repeated clicks cannot create a packet flood.
    db.prepare(`INSERT INTO br_wake_grants(token_hash,user_id,source_token_hash,source_id,target_id,helper_id,expires_at)
     SELECT ?,?,?,?,?,?,? WHERE (SELECT COUNT(*) FROM br_wake_grants WHERE user_id=? AND expires_at>?)<3`).bind(await digest(grant),u.id,u.token_hash,source,target,row.remote_id,new Date(Date.now()+60000).toISOString(),u.id,stamp())
   ]);
   if(!result[1].meta.changes)fail('Wait a minute before trying wake again',429);
-  const addresses=[...new Set((info.local_ips||[]).filter(privateIp))].slice(0,4);
+  const addresses=[...new Set((Array.isArray(info.local_ips)?info.local_ips:[]).filter(privateIp))].slice(0,4);
   // Host is used only for the pinned-key encrypted control channel, never as a UDP destination.
   const host=String(info.managed_server_public_host||'').split(':')[0];
   if(/^[a-zA-Z0-9.-]{1,253}$/.test(host)&&!addresses.includes(host))addresses.push(host);
