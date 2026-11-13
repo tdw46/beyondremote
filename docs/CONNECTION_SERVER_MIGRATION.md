@@ -529,3 +529,52 @@ shared-account billing metrics were not remeasured for this local UI fix.
 Mac staging has the independently actionable Input Monitoring step, outgoing-only permission correction, Local Network usage explanation/settings link, and the Windows actual-service readiness check. Five focused widget tests and both Mac release builds pass; 175 installed file hashes verify. User will grant Input Monitoring through the wizard. No hosted polling or paid service was added.
 
 The approved Mac-only Windows SSH firewall rule now uses 192.168.5.97 with its existing Private/TCP2222 limits. Local Windows port test succeeds; Mac SSH remains unavailable. The scoped `scripts/windows/rebuild-staging.ps1` verifies an exact source revision, preserves source edits, backs up staging, refuses active sessions, verifies installed hashes and leaves stable untouched. Native Windows build/install and the real permission/connection retest remain pending.
+
+
+## Turn 224: different-network route recovery (2026-11-13)
+
+The Mac resumed on a different network and an actual Mac-to-Windows staging
+connection failed. The client fell back to the old home rendezvous endpoint.
+A bounded owner-authenticated route read returned two private Windows candidates,
+a valid device key, and no public endpoint. A read-only D1 check (10 rows read,
+zero written) confirmed both devices still had valid native presence sessions;
+Windows had stored an empty public address/port. This is not a successful WAN
+acceptance or evidence that Windows is currently reachable.
+
+Source `9ceaa836a` fixes two independently identified defects:
+- UI account/heartbeat refreshes no longer erase the background service's
+  in-memory public route. The database merge is atomic, preserves only a route
+  belonging to the same device key, and still allows the presence publisher to
+  clear it immediately. Device-key replacement cannot inherit the old route.
+- Direct route discovery uses the same IPC-mirrored account credential as native
+  presence, rather than the desktop-only LocalConfig store that a Windows system
+  service does not share. Existing authorization and stop-service gates remain.
+
+The new API regression failed before the fix and passed afterward. All 18 API
+checks and the bundled workerd test passed; additional coverage verifies that
+concurrent UI refreshes cannot resurrect a cleared route. An unchanged refresh
+writes zero rows. The Rust Flutter library check passed with existing warnings.
+Staging Worker version `6d453e48-8acc-4872-b27a-08e8205aa3cc` contains the API
+fix. Existing OAuth secrets and staging D1 binding were preserved. Production,
+stable applications and untracked transport experiments are outside this release.
+
+No periodic hosted requests, new provider services or streaming relay were added.
+Local 100-account/200-request tests used no hosted load. The route-read fixture
+remains three SQL statements, eight rows read, zero written; operation totals
+vary with data. Private rollback/evidence is under
+`~/.local/share/beyondremote-migration/turn224/`.
+
+Windows diagnostic/restart and exact staging rebuild instructions were handed to
+Tyler for the existing Windows Codex session (Astra medium), because the trusted
+private-LAN SSH runner is not reachable from the Mac's new network. Do not expose
+SSH publicly to work around that limitation. Real WAN video/input acceptance is
+pending Windows route republication and a new connection test.
+
+Mac staging was rebuilt, packaged with the unchanged trusted signing identity,
+and installed with all 156 file hashes verified. The first packaging pass
+correctly refused a cached server checkout with a modified `db_v2.sqlite3`; the
+clean existing checkout at the exact pinned upstream revision was used instead,
+without deleting that database or bypassing the guard. App launch visibly retained
+the signed-in account and “Device access is set up.” Stable Mac bundle hashes
+were unchanged. This local reinstall check does not substitute for the still
+pending Windows internet playback/input test.
