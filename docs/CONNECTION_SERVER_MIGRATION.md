@@ -222,7 +222,9 @@ Two additional recovery issues were exposed:
   processes were running. A permanent network-change reconciliation fix is still
   required. Never overwrite mappings owned by another service.
 
-Home Wi-Fi was restored. Windows' remote-desktop listener remained reachable,
+Home Wi-Fi was restored. After restarting the Mac staging client, a new direct
+Mac-to-Windows desktop session rendered successfully and was disconnected using
+the in-session toolbar. Windows' remote-desktop listener remained reachable,
 but its strict SSH runner no longer accepted the Mac's new source address; its
 firewall/SSH restrictions were not broadened. The paired runner needs a verified
 source-address update or restoration of its previous reserved address before
