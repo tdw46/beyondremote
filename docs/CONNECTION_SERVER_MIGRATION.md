@@ -93,7 +93,105 @@ References reviewed:
 - https://tailscale.com/docs/features/peer-relay
 - https://www.wireguard.com/quickstart/
 
-No mesh VPN is installed or shipped by the current server-setup release.
+Turn 216 implements the app-scoped private connection and wake flow below. It
+reuses BeyondRemote's encrypted transport; it does not install WireGuard, a TUN
+adapter, or a general-purpose IP mesh VPN.
+
+## Turn 216: private network and Wake and connect
+
+Implemented and installed on Mac and Windows staging on 2026-11-12. Desktop
+source is `6e0a2e026`; the final API source is `4a0b718d2`. Staging Worker version
+is `6306e637-6998-45e1-abe6-24f0feaf363f`. Production API/DNS and stable desktop
+apps remain unchanged. Windows Mica styling and both platforms' existing
+account/configuration data were preserved.
+
+### Experience and transport
+
+- Normal device cards retain **Connect**, with **Wake and connect** beside
+  eligible computers. A collapsed **Private network & wake** group contains the
+  home-computer choice, nested server setup, OS wake preparation and a per-device
+  wake opt-in. The Mac remains the selected home computer.
+- Connections try account-authorized private addresses and, for the selected
+  running home server, its public address at fixed TCP 21128. Pinned device keys,
+  encryption, ownership and one-use desktop authorization remain enforced.
+  Existing traversal and selected-desktop relay fallback remain available.
+- Automatic router setup now manages five owned mappings: TCP 21115, TCP 21116,
+  UDP 21116, TCP 21117 and TCP 21128. All five passed real-router read-back.
+  Shutdown removes owned mappings and restart recreates them. UDP 9 is never
+  exposed to the internet.
+- A wake request uses a separate, one-use 60-second account ticket. The awake
+  selected home computer checks it over the existing encrypted control channel,
+  revalidates permissions, then emits three fixed 102-byte LAN magic packets.
+  It must have a physical adapter on the target's subnet. No arbitrary UDP
+  forwarding or desktop access is granted by a wake ticket.
+- Wake authorization is limited to three tickets per account per minute,
+  including consumed tickets. Native receivers also bound authorization attempts.
+  Revoked source sessions, removed devices, changed target permissions, stale
+  helper sessions, cross-account requests and replay are rejected.
+- OS preparation uses normal macOS authentication / Windows UAC. macOS enables
+  AC wake for network access; Windows requests supported adapter wake settings
+  without restarting adapters. Firmware support is not assumed. These privileged
+  setup prompts still need an interactive acceptance test.
+
+### Verification and honest remaining gates
+
+- Seventeen isolated API tests pass, including twenty concurrent wake requests
+  admitting exactly three, replay/revocation/cross-account denial, and the existing
+  local 100-account workload. No hosted load test was run.
+- Three Rust wake tests pass, including actual Mac physical-adapter discovery.
+  A Darwin adapter-library MAC parsing issue was corrected using validated local
+  interface discovery, cached until the interface/IP set changes.
+- Changed Dart analysis is clean. Mac and Windows release builds pass; installed
+  files match their manifests and Mac deep signature verification passes.
+- Actual Mac-to-Windows desktop rendering and input passed. Enabling Windows
+  wake in its UI appeared on the Mac after refresh. Clicking **Wake and connect**
+  consumed its one-use ticket at `2026-11-13T02:49:52.370Z`; after the bounded
+  eight-second wait it opened the Windows desktop directly at 02:50:02Z. The
+  brief test was disconnected afterward. Windows was already awake: this proves
+  the authorization/control/connection flow, not hardware wake from sleep.
+- Both desktop staging apps have account wake enabled. The Mac reports AC wake
+  enabled; Windows reports adapter magic-packet capability, but its armed-device
+  list and Modern Standby behavior require a physical sleep/wake test. No machine
+  was put to sleep remotely.
+- **Pending:** different-network/hotspot connection, real sleep/wake, and normal
+  Screen Recording permission for inbound Mac capture after staging re-signing.
+  iOS wake UI and physical-device acceptance are not part of this installed
+  desktop release. The helper must be awake and reachable on the target LAN;
+  automatic helper failover is not implemented. This cannot guarantee access
+  when all home machines sleep, CGNAT blocks reachability, or hardware lacks wake.
+
+### Incremental operations and recovery
+
+Wake adds zero idle hosted requests. Its explicit action adds two Worker requests
+(prepare and consume); the isolated fixture measured 23 rows read and 5 rows
+written. Later expiry cleanup is owner-indexed and bounded; budget approximately
+four additional writes per grant including indexes. The following normal desktop
+connection has its existing routing/authorization costs in addition to wake.
+Local progress checking is bounded, and there is no hosted wake queue, polling,
+R2 traffic, new paid service or hosted desktop relay.
+
+| Wake volume | Added Worker requests/month | Fixture-based reads/month | Planned writes/month, including cleanup |
+| --- | ---: | ---: | ---: |
+| 1,000/month | 2,000 | 23,000 | approximately 9,000 |
+| 100,000/month | 200,000 | 2,300,000 | approximately 900,000 |
+
+These projections are assumptions, not account capacity measurements. At an even
+100,000 wakes/month, about 30,000 writes/day would consume 30% of D1's free daily
+write allowance before normal connections and other sites. Current shared free
+allowances are 100,000 Worker requests/day, 5 million D1 rows read/day and 100,000
+rows written/day, with 5 GB D1 storage. No new storage database was created and
+no paid upgrade was enabled. Bursts and the account's other sites must be counted;
+the next likely constraint for a wake-heavy workload is D1 writes.
+Sources checked: [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/).
+
+Private evidence/manifests and the prior Mac staging bundle are retained under
+`~/.local/share/beyondremote-migration/turn216/`. The Windows prior installed
+bundle is under its handoff `artifacts/staging-before-wake-216`. Recovery can
+restore those exact bundles and the previous Worker version; leave the additive
+wake table in place rather than deleting account records. Disable wake through
+its per-device switch to revoke further requests. Do not remove current server
+keys, account data or router mappings owned by another service.
 
 ## Shared tracker gate
 
