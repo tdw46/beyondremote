@@ -148,6 +148,8 @@ class Peer {
       "platform": platform,
       "login_name": loginName,
       "device_group_name": device_group_name,
+      "connection_protocol": connectionProtocol,
+      "wake_enabled": wakeEnabled,
     };
   }
 
@@ -230,6 +232,8 @@ class Peer {
         managedServerPublicHost: other.managedServerPublicHost,
         managedServerKey: other.managedServerKey);
     peer.online = other.online;
+    peer.connectionProtocol = other.connectionProtocol;
+    peer.wakeEnabled = other.wakeEnabled;
     return peer;
   }
 }
