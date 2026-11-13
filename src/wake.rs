@@ -363,58 +363,205 @@ pub fn job_json() -> String {
 lazy_static::lazy_static! {
     static ref SETUP: Mutex<Value> = Mutex::new(json!({"busy":false,"message":""}));
 }
-fn bounded_command(mut command: std::process::Command) -> ResultType<()> {
-    use std::{process::Stdio, time::Instant};
+fn wake_exit_message(code: Option<i32>, details: &str) -> String {
+    let reason = match code {
+        Some(10) => "No active physical network adapter was found. Connect Ethernet or Wi-Fi, then retry.",
+        Some(11) => "Your active adapter driver reports that Wake on Magic Packet is unsupported. Try a wake-capable Ethernet adapter; Wi-Fi and USB adapters often cannot wake a sleeping computer.",
+        Some(12) => "The adapter supports wake, but its driver did not retain Wake on Magic Packet. Open Device Manager, expand Network adapters, then check the adapter's Advanced and Power Management tabs.",
+        Some(13) => "Wake on Magic Packet was enabled, but Windows did not arm the adapter to wake the computer. Check Device Manager > Network adapters > Properties > Power Management. Firmware or Modern Standby policy may prevent arming.",
+        Some(16) => "Windows could not read or change the adapter power-management settings. Check administrator approval and the network driver in Device Manager.",
+        Some(20) => "Administrator approval was cancelled. No successful wake setup was confirmed. Retry and approve the system prompt, or open power settings for manual setup.",
+        Some(21) => "The elevated setup process could not start. Your Windows administrator or security policy may block elevation.",
+        _ if details.contains("(-128)") => "Administrator approval was cancelled. Retry and approve the macOS prompt, or use Battery > Options / Energy settings.",
+        _ => "The operating system rejected wake setup. Review the diagnostic below, then open power or adapter settings.",
+    };
+    if details.trim().is_empty() {
+        reason.to_owned()
+    } else {
+        format!(
+            "{}\nSystem diagnostic: {}",
+            reason,
+            details.trim().chars().take(1200).collect::<String>()
+        )
+    }
+}
+
+pub(crate) fn bounded_setup_command(
+    mut command: std::process::Command,
+) -> ResultType<(std::process::ExitStatus, String, String)> {
+    use std::{io::Read, process::Stdio, time::Instant};
     let mut child = command
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Setup output unavailable"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Setup diagnostics unavailable"))?;
+    let read = |mut stream: Box<dyn Read + Send>| {
+        let (send, receive) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            let mut data = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(count) => {
+                        let keep = count.min(16384usize.saturating_sub(data.len()));
+                        data.extend_from_slice(&chunk[..keep]);
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) => {
+                        hbb_common::log::warn!("Setup diagnostic pipe failed: {}", error);
+                        break;
+                    }
+                }
+            }
+            let _ = send.send(String::from_utf8_lossy(&data).into_owned());
+        });
+        receive
+    };
+    let out = read(Box::new(stdout));
+    let err = read(Box::new(stderr));
     let start = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
-            if status.success() {
-                return Ok(());
-            }
-            bail!("Wake setup was not completed. Check system permissions and adapter support.");
+            return Ok((
+                status,
+                out.recv_timeout(Duration::from_secs(2)).unwrap_or_default(),
+                err.recv_timeout(Duration::from_secs(2)).unwrap_or_default(),
+            ));
         }
         if start.elapsed() > Duration::from_secs(120) {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("Wake setup timed out. You can retry from network settings.");
+            bail!("System setup timed out waiting for approval or the OS helper. An elevated prompt may still be open; close it before retrying. No success was confirmed.");
         }
         std::thread::sleep(Duration::from_millis(200));
     }
 }
-fn prepare_os() -> ResultType<()> {
+
+#[cfg(target_os = "windows")]
+pub(crate) fn elevated_powershell(script: &str) -> std::process::Command {
+    let encoded = hbb_common::base64::encode(
+        script
+            .encode_utf16()
+            .flat_map(u16::to_le_bytes)
+            .collect::<Vec<_>>(),
+    );
+    let outer = format!("$ErrorActionPreference='Stop'; try {{ $p=Start-Process powershell.exe -Verb RunAs -PassThru -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {}'; $p.WaitForExit(); exit $p.ExitCode }} catch {{ if($_.Exception.NativeErrorCode -eq 1223) {{ exit 20 }}; exit 21 }}", encoded);
+    let mut command = std::process::Command::new("powershell.exe");
+    command.args(["-NoProfile", "-NonInteractive", "-Command", &outer]);
+    command
+}
+
+fn prepare_os() -> ResultType<String> {
     #[cfg(target_os = "macos")]
     {
-        // AC power only; preserve the user's battery policy and normal sleep settings.
+        let capabilities = std::process::Command::new("/usr/bin/pmset")
+            .args(["-g", "cap"])
+            .output()?;
+        if !capabilities.status.success() {
+            bail!("macOS could not report power capabilities. Open Battery > Options or Energy settings.");
+        }
+        let caps = String::from_utf8_lossy(&capabilities.stdout);
+        if !caps.lines().any(|line| line.trim() == "womp") {
+            bail!("This Mac does not advertise Wake for network access (womp). Automatic wake cannot be enabled on this hardware/power configuration. Check Battery > Options or Energy; keep a supported home helper awake.");
+        }
         let mut command = std::process::Command::new("/usr/bin/osascript");
         command.args([
             "-e",
             r#"do shell script "/usr/bin/pmset -c womp 1" with administrator privileges"#,
         ]);
-        return bounded_command(command);
+        let (status, _, error) = bounded_setup_command(command)?;
+        if !status.success() {
+            bail!("{}", wake_exit_message(status.code(), &error));
+        }
+        let readback = std::process::Command::new("/usr/bin/pmset")
+            .args(["-g", "custom"])
+            .output()?;
+        let mut ac = false;
+        let verified = String::from_utf8_lossy(&readback.stdout)
+            .lines()
+            .any(|line| {
+                if line.trim().ends_with("Power:") {
+                    ac = line.trim() == "AC Power:";
+                }
+                let fields: Vec<_> = line.split_whitespace().collect();
+                ac && fields == ["womp", "1"]
+            });
+        if !readback.status.success() || !verified {
+            bail!("macOS did not retain Wake for network access for AC power. Open Battery > Options or Energy and check the setting. Battery sleep policy was not changed.");
+        }
+        return Ok("macOS confirmed Wake for network access on AC power. Battery policy is unchanged. Keep power connected and another home computer awake; a real sleep-and-wake test is still required.".to_owned());
     }
     #[cfg(target_os = "windows")]
     {
-        // Fixed program, no user-controlled shell text. Never restart an adapter.
-        let script = r#"$ErrorActionPreference='Stop'; $count=0; Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | ForEach-Object { $a=$_; $p=Get-NetAdapterPowerManagement -Name $a.Name; if($p.WakeOnMagicPacket -ne 'Unsupported'){ Set-NetAdapterPowerManagement -Name $a.Name -WakeOnMagicPacket Enabled -NoRestart; & powercfg.exe /deviceenablewake $a.InterfaceDescription; if($LASTEXITCODE -eq 0){$count++} } }; if($count -eq 0){exit 1}"#;
+        let command = elevated_powershell(include_str!("../scripts/windows/prepare-wake.ps1"));
+        let (status, _, error) = bounded_setup_command(command)?;
+        let diagnostic_script = r#"$ErrorActionPreference='Stop'; try { Get-NetAdapter -Physical | Where-Object Status -eq 'Up' | Select-Object -First 8 | ForEach-Object { $a=$_; try { $p=Get-NetAdapterPowerManagement -Name $a.Name; Write-Output ($a.Name + ' [' + $a.InterfaceDescription + ']: Wake on Magic Packet = ' + $p.WakeOnMagicPacket) } catch { Write-Output ($a.Name + ': power-management query failed: ' + $_.Exception.Message) } }; Write-Output 'Windows sleep support:'; powercfg.exe /a } catch { Write-Output ('Adapter query failed: '+$_.Exception.Message) }"#;
         let encoded = hbb_common::base64::encode(
-            script
+            diagnostic_script
                 .encode_utf16()
                 .flat_map(u16::to_le_bytes)
                 .collect::<Vec<_>>(),
         );
-        let outer=format!("$p=Start-Process powershell.exe -Verb RunAs -PassThru -ArgumentList '-NoProfile -NonInteractive -EncodedCommand {}'; $p.WaitForExit(); exit $p.ExitCode",encoded);
-        let mut command = std::process::Command::new("powershell.exe");
-        command.args(["-NoProfile", "-NonInteractive", "-Command", &outer]);
-        return bounded_command(command);
+        let mut diagnostic = std::process::Command::new("powershell.exe");
+        diagnostic.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encoded]);
+        let details = bounded_setup_command(diagnostic)
+            .map(|(_, out, _)| out.chars().take(2400).collect::<String>())
+            .unwrap_or_else(|e| format!("Adapter diagnostics unavailable: {}", e));
+        if !status.success() {
+            bail!("{}\n{}", wake_exit_message(status.code(), &error), details);
+        }
+        return Ok("Windows verified Wake on Magic Packet and a wake-armed adapter. No adapter was restarted. Keep power connected and another home computer awake; firmware and real sleep/wake still need testing.\n".to_owned() + &details);
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     bail!(
         "Enable Wake on LAN in your network adapter and firmware settings, then allow wake here."
     );
+}
+
+pub fn open_settings(target: &str) {
+    // Fixed destinations only; never execute a UI-supplied command or URL.
+    #[cfg(target_os = "macos")]
+    {
+        let destination = match target {
+            "power" => "x-apple.systempreferences:com.apple.preference.battery",
+            "energy" => "x-apple.systempreferences:com.apple.preference.energysaver",
+            "firewall" => "x-apple.systempreferences:com.apple.preference.security?Firewall",
+            "network" => "x-apple.systempreferences:com.apple.preference.network",
+            _ => return,
+        };
+        if let Err(e) = std::process::Command::new("/usr/bin/open")
+            .arg(destination)
+            .spawn()
+        {
+            hbb_common::log::warn!("Could not open system settings: {}", e);
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let destination = match target {
+            "power" => "powercfg.cpl",
+            "network" => "ncpa.cpl",
+            "firewall" => "firewall.cpl",
+            "adapters" => "devmgmt.msc",
+            _ => return,
+        };
+        let mut command = if target == "adapters" {
+            std::process::Command::new("mmc.exe")
+        } else {
+            std::process::Command::new("control.exe")
+        };
+        if let Err(e) = command.arg(destination).spawn() {
+            hbb_common::log::warn!("Could not open system settings: {}", e);
+        }
+    }
 }
 pub fn prepare_settings() {
     if !crate::common::STAGING_BUILD {
@@ -427,9 +574,9 @@ pub fn prepare_settings() {
     *setup = json!({"busy":true,"message":"Approve wake setup in your system permission dialog."});
     std::thread::spawn(|| {
         let message = match prepare_os() {
-            Ok(()) => {
+            Ok(message) => {
                 set_enabled(true);
-                "Wake settings applied. Keep power connected and test sleep and wake before relying on it.".to_owned()
+                message
             }
             Err(e) => e.to_string(),
         };
@@ -467,6 +614,14 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!found.is_empty());
         assert!(found.iter().all(|m| mac_bytes(m).is_ok()));
+    }
+    #[test]
+    fn wake_failures_explain_specific_next_steps() {
+        assert!(wake_exit_message(Some(20), "").contains("cancelled"));
+        assert!(wake_exit_message(Some(11), "").contains("unsupported"));
+        assert!(wake_exit_message(Some(13), "").contains("did not arm"));
+        assert!(wake_exit_message(Some(1), "User canceled. (-128)").contains("cancelled"));
+        assert!(wake_exit_message(Some(1), "driver diagnostic").contains("driver diagnostic"));
     }
     #[test]
     fn only_fixed_unicast_magic_packets() {

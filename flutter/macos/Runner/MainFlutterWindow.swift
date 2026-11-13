@@ -37,6 +37,7 @@ class RelativeMouseState {
 
 class MainFlutterWindow: NSWindow {
     private var mainFlutterViewController: FlutterViewController?
+    private var lifecycleRecovery: [ObjectIdentifier: WindowLifecycleRecovery] = [:]
 
     override func awakeFromNib() {
         rustdesk_core_main();
@@ -52,8 +53,10 @@ class MainFlutterWindow: NSWindow {
         setMethodHandler(registrar: registrar)
 
         RegisterGeneratedPlugins(registry: flutterViewController)
+        installLifecycleRecovery(flutterViewController)
 
         FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+            self.installLifecycleRecovery(controller)
             controller.backgroundColor = NSColor.clear
             self.configureGlassEffect(window: controller.view.window, flutterView: controller.view, dark: self.effectiveDarkMode())
             // Register the plugin which you want access from other isolate.
@@ -75,6 +78,14 @@ class MainFlutterWindow: NSWindow {
         }
 
         super.awakeFromNib()
+    }
+
+    private func installLifecycleRecovery(_ controller: FlutterViewController) {
+        guard let window = controller.view.window else { return }
+        let key = ObjectIdentifier(window)
+        lifecycleRecovery[key] = WindowLifecycleRecovery(controller: controller) { [weak self] in
+            self?.lifecycleRecovery.removeValue(forKey: key)
+        }
     }
 
     override public func order(_ place: NSWindow.OrderingMode, relativeTo otherWin: Int) {
@@ -339,5 +350,57 @@ class MainFlutterWindow: NSWindow {
                     result(FlutterMethodNotImplemented)
                 }
         })
+    }
+}
+
+// Flutter 3.24 can leave a secondary engine hidden after app switching even
+// though its NSWindow is visible. Input and decoding continue but scheduled
+// frames are suppressed (flutter/flutter#133533, #188772). Reconcile only on
+// native visibility/focus events; no timer, forced-frame loop, or network work.
+private final class WindowLifecycleRecovery {
+    private weak var controller: FlutterViewController?
+    private var observers: [NSObjectProtocol] = []
+    private var queued = false
+
+    init(controller: FlutterViewController, onClose: @escaping () -> Void) {
+        self.controller = controller
+        guard let window = controller.view.window else { return }
+        let center = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification,
+                     NSWindow.didDeminiaturizeNotification,
+                     NSWindow.didChangeOcclusionStateNotification] {
+            observers.append(center.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                self?.resumeVisibleWindow()
+            })
+        }
+        observers.append(center.addObserver(forName: NSApplication.didBecomeActiveNotification,
+                                            object: nil, queue: .main) { [weak self] _ in
+            self?.resumeVisibleWindow()
+        })
+        observers.append(center.addObserver(forName: NSWindow.willCloseNotification,
+                                            object: window, queue: .main) { _ in onClose() })
+        resumeVisibleWindow()
+    }
+
+    deinit {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    private func resumeVisibleWindow() {
+        guard !queued else { return }
+        queued = true
+        // Let the engine consume the originating Cocoa event first.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.queued = false
+            guard let controller = self.controller,
+                  let window = controller.view.window,
+                  window.isVisible, !window.isMiniaturized, !NSApp.isHidden,
+                  window.isKeyWindow || window.occlusionState.contains(.visible) else { return }
+            let state = NSApp.isActive ? "AppLifecycleState.resumed" : "AppLifecycleState.inactive"
+            FlutterBasicMessageChannel(name: "flutter/lifecycle",
+                                       binaryMessenger: controller.engine.binaryMessenger,
+                                       codec: FlutterStringCodec.sharedInstance()).sendMessage(state)
+        }
     }
 }

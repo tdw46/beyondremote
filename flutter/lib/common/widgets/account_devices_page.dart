@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import '../../common.dart';
 import 'login.dart';
+import 'setup_glass_dialog.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 
@@ -12,13 +13,17 @@ import '../../models/platform_model.dart';
 /// intent load authoritative account state.
 class AccountDevicesPage extends StatefulWidget {
   final Widget permissions;
-  const AccountDevicesPage({super.key, required this.permissions});
+  final Widget? setup;
+  const AccountDevicesPage({super.key, required this.permissions, this.setup});
 
   @override
   State<AccountDevicesPage> createState() => _AccountDevicesPageState();
 }
 
 class _AccountDevicesPageState extends State<AccountDevicesPage> {
+  final _setupRevision = ValueNotifier<int>(0);
+  bool _setupDialogOpen = false;
+  bool _firewallBusy = false;
   bool _refreshing = false;
   String? _connecting;
   String? _error;
@@ -42,6 +47,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   void dispose() {
     _wakeGeneration++;
     _manualHost.dispose();
+    if (!_setupDialogOpen) _setupRevision.dispose();
     super.dispose();
   }
 
@@ -112,7 +118,9 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
       setState(() {
         _serverStatus = status;
         _serverMessage = status['message']?.toString() ?? '';
+        _firewallBusy = status['firewall_setup']?['busy'] == true;
       });
+      _setupRevision.value++;
     }
   }
 
@@ -149,7 +157,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
       ]));
 
   Widget _setupWizard() => ExpansionTile(
-        initiallyExpanded: false,
+        initiallyExpanded: true,
         title: const Text('Server setup on this computer'),
         leading: const Icon(Icons.settings_ethernet_rounded),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -169,11 +177,37 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
           const SizedBox(height: 8),
           Text(_serverMessage),
           const SizedBox(height: 12),
+          _setupStep('App-specific firewall access checked',
+              _serverStatus['firewall_setup']?['verified'] == true),
+          Text(_serverStatus['firewall_setup']?['message']?.toString() ??
+              'Check firewall access for this computer.'),
+          if (_firewallBusy) const LinearProgressIndicator(),
+          Wrap(spacing: 8, children: [
+            FilledButton.icon(
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Allow server through firewall'),
+              onPressed: _firewallBusy ? null : _prepareFirewall,
+            ),
+            TextButton(
+                onPressed: () => _openSystemSettings('firewall'),
+                child: const Text('Open firewall settings')),
+          ]),
+          const SizedBox(height: 12),
           const Text(
               'Automatic setup uses UPnP with your router’s existing permission. If it is unavailable, use your router’s app or local administration page to enable UPnP or forward TCP 21115–21117, TCP 21128 and UDP 21116 to this computer. Approve the server in your operating system’s firewall. A second router or ISP-shared address may require upstream setup.'),
           const SizedBox(height: 8),
           const Text(
               'Enter a router password only in the router’s own trusted sign-in page. BeyondRemote does not upload or store it.'),
+          TextButton.icon(
+              onPressed: () async {
+                await bind.mainSetCommon(
+                    key: 'managed-server-open-router', value: '');
+                await _readServerStatus();
+              },
+              icon: const Icon(Icons.router_outlined),
+              label: const Text('Open this network’s router settings')),
+          const Text(
+              'A router login or ISP change cannot be approved by BeyondRemote. If UPnP is unavailable, use the router page; double NAT or carrier-grade NAT may require your ISP or a different home server.'),
           ExpansionTile(title: const Text('Manual router setup'), children: [
             TextField(
                 controller: _manualHost,
@@ -264,6 +298,155 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
             ])),
       );
 
+  Future<void> _openSystemSettings(String target) async {
+    await bind.mainSetCommon(key: 'setup-open-settings', value: target);
+  }
+
+  Future<void> _prepareFirewall() async {
+    if (_firewallBusy) return;
+    setState(() => _firewallBusy = true);
+    _setupRevision.value++;
+    try {
+      await bind.mainSetCommon(
+          key: 'managed-server-prepare-firewall', value: '');
+      for (var i = 0; i < 125 && mounted; i++) {
+        await _readServerStatus();
+        if (!_firewallBusy) break;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _serverMessage =
+            'Could not read firewall setup. Open system firewall settings and review app access.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _firewallBusy = false);
+        _setupRevision.value++;
+      }
+    }
+  }
+
+  Future<void> _prepareWake() async {
+    if (_wakeSetupBusy) return;
+    setState(() => _wakeSetupBusy = true);
+    _setupRevision.value++;
+    try {
+      await bind.mainSetCommon(key: 'wake-prepare', value: '');
+      for (var i = 0; i < 125 && mounted; i++) {
+        await _readWakeSettings();
+        if (!_wakeSetupBusy) break;
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (mounted && _wakeEnabled) {
+        await gFFI.userModel
+            .refreshServerConfigFromAccount(force: true, refreshModels: false);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _wakeMessage =
+            'Could not read the wake setup result. No success is confirmed. Open system settings or retry.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _wakeSetupBusy = false);
+        _setupRevision.value++;
+      }
+    }
+  }
+
+  Future<void> _showSetupDialog({required bool wake}) async {
+    if (_setupDialogOpen) return;
+    _setupDialogOpen = true;
+    if (wake) {
+      await _readWakeSettings();
+    } else {
+      await _readServerStatus();
+    }
+    if (!mounted) {
+      _setupDialogOpen = false;
+      _setupRevision.dispose();
+      return;
+    }
+    await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => ValueListenableBuilder<int>(
+            valueListenable: _setupRevision,
+            builder: (_, __, ___) => SetupGlassDialog(
+                  maxWidth: 680,
+                  title: Text(wake ? 'Set up wake' : 'Set up your home server'),
+                  content: SizedBox(
+                      width: 620,
+                      child: SingleChildScrollView(
+                        child: wake
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                    const Text(
+                                        '1. Connect power and your home network. Keep another BeyondRemote computer awake on that network to send the wake signal.'),
+                                    const SizedBox(height: 12),
+                                    Text(isMacOS
+                                        ? '2. Enable Wake for network access on AC power. Battery sleep policy stays unchanged.'
+                                        : '2. Enable Wake on Magic Packet on a supported active adapter, then verify Windows has armed it. Adapters are not restarted.'),
+                                    const SizedBox(height: 12),
+                                    FilledButton.icon(
+                                        icon: const Icon(Icons
+                                            .admin_panel_settings_outlined),
+                                        label: Text(_wakeSetupBusy
+                                            ? 'Waiting for system setup…'
+                                            : 'Enable automatically'),
+                                        onPressed: _wakeSetupBusy
+                                            ? null
+                                            : _prepareWake),
+                                    if (_wakeSetupBusy)
+                                      const LinearProgressIndicator(),
+                                    const SizedBox(height: 12),
+                                    SelectableText(_wakeMessage),
+                                    const SizedBox(height: 12),
+                                    Wrap(spacing: 8, children: [
+                                      TextButton(
+                                          onPressed: () =>
+                                              _openSystemSettings('power'),
+                                          child: const Text(
+                                              'Open power settings')),
+                                      if (isMacOS)
+                                        TextButton(
+                                            onPressed: () =>
+                                                _openSystemSettings('energy'),
+                                            child: const Text(
+                                                'Open desktop Energy settings')),
+                                      if (isWindows)
+                                        TextButton(
+                                            onPressed: () =>
+                                                _openSystemSettings('adapters'),
+                                            child: const Text(
+                                                'Open Device Manager')),
+                                      TextButton(
+                                          onPressed: () =>
+                                              _openSystemSettings('network'),
+                                          child: const Text(
+                                              'Open network settings')),
+                                    ]),
+                                    Text(isMacOS
+                                        ? 'In Battery, open Options and check Wake for network access. On a desktop Mac, use Energy. If the setting is absent, macOS does not expose it for that hardware.'
+                                        : 'In Device Manager: Network adapters → your adapter → Properties. Check Wake on Magic Packet under Advanced and Allow this device to wake the computer under Power Management. Missing options are a driver/hardware limitation; check the PC maker’s firmware guidance. BeyondRemote never reboots into firmware automatically.'),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                        '3. Verify: put this computer to sleep, then choose Wake from another signed-in device. An awake home helper is required. Applied settings alone do not prove wake works, especially over Wi-Fi or after shutdown.'),
+                                  ])
+                            : _serverPicker(),
+                      )),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('Close'))
+                  ],
+                )));
+    _setupDialogOpen = false;
+    if (!mounted) _setupRevision.dispose();
+  }
+
   Future<void> _readWakeSettings() async {
     final value = jsonDecode(await bind.mainGetCommon(key: 'wake-settings'))
         as Map<String, dynamic>;
@@ -276,10 +459,11 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
             ? setupMessage
             : value['message']?.toString() ?? '';
         if (_wakeEnabled && value['profiles'] == 0) {
-          _wakeMessage =
-              'No supported local network adapter found. Connect to your home network and try again.';
+          _wakeMessage +=
+              '\nNo supported local network adapter found. Connect to your home network and try again.';
         }
       });
+      _setupRevision.value++;
     }
   }
 
@@ -467,6 +651,8 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                   ? user.accountLabelWithHandle
                   : 'Sign in to BeyondRemote on each device. Then choose a device to connect.'),
               const SizedBox(height: 24),
+              if (widget.setup != null) widget.setup!,
+              const SizedBox(height: 16),
               if (!signedIn)
                 FilledButton.icon(
                     onPressed: () async {
@@ -515,28 +701,21 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                     subtitle: const Text(
                         'Only BeyondRemote traffic. Your internet stays unchanged.'),
                     children: [
-                      _serverPicker(),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: FilledButton.icon(
+                          icon: const Icon(Icons.settings_ethernet),
+                          label: const Text('Guided server setup'),
+                          onPressed: () => _showSetupDialog(wake: false),
+                        ),
+                      ),
                       if (isDesktop) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: OutlinedButton.icon(
                             icon: const Icon(Icons.power_settings_new_rounded),
-                            label: Text(_wakeSetupBusy
-                                ? 'Preparing…'
-                                : 'Prepare this computer for wake'),
-                            onPressed: _wakeSetupBusy
-                                ? null
-                                : () async {
-                                    await bind.mainSetCommon(
-                                        key: 'wake-prepare', value: '');
-                                    for (var i = 0; i < 125 && mounted; i++) {
-                                      await _readWakeSettings();
-                                      if (!_wakeSetupBusy) break;
-                                      await Future<void>.delayed(
-                                          const Duration(seconds: 1));
-                                    }
-                                    if (mounted) await _refresh();
-                                  },
+                            label: const Text('Set up wake'),
+                            onPressed: () => _showSetupDialog(wake: true),
                           ),
                         ),
                         SwitchListTile(

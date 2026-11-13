@@ -33,7 +33,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Insert Lock", "Insert lock"),
         ("Set Password", "Set password"),
         ("OS Password", "OS password"),
-        ("install_tip", "Due to UAC, Beyond Remote can not work properly as the remote side in some cases. To avoid UAC, please click the button below to install Beyond Remote to the system."),
+        ("install_tip", "System installation is recommended for reliable remote control, including administrator windows and the sign-in screen. Windows will ask for approval. You can also choose Just for me with limited access."),
         ("config_acc", "In order to control your Desktop remotely, you need to grant Beyond Remote \"Accessibility\" permissions."),
         ("config_screen", "In order to access your Desktop remotely, you need to grant Beyond Remote \"Screen Recording\" permissions."),
         ("Installation Path", "Installation path"),

@@ -22,6 +22,7 @@ const RELEASE_API: &str = "https://api.github.com/repos/rustdesk/rustdesk-server
 
 lazy_static::lazy_static! {
     static ref MANAGED: Mutex<ManagedServer> = Default::default();
+    static ref FIREWALL_SETUP: Mutex<Value> = Mutex::new(serde_json::json!({"busy":false,"verified":false,"message":"Firewall access has not been checked by setup."}));
 }
 
 static SHUTDOWN_HOOK: Once = Once::new();
@@ -40,6 +41,7 @@ struct ManagedServer {
 struct ManagedStatus {
     starting: bool,
     router_mapped: bool,
+    firewall_setup: Value,
     supported_install: bool,
     supported_run: bool,
     installed: bool,
@@ -149,6 +151,14 @@ pub extern "C" fn stop_on_shutdown_hook() {
 
 pub fn handle_command(key: &str, value: &str) {
     match key {
+        "managed-server-prepare-firewall" if crate::common::STAGING_BUILD => {
+            prepare_firewall();
+        }
+        "managed-server-open-router" if crate::common::STAGING_BUILD => {
+            if let Err(e) = crate::managed_network::open_router_settings() {
+                MANAGED.lock().unwrap().last_error = e.to_string();
+            }
+        }
         "managed-server-reconcile" if crate::common::STAGING_BUILD => {
             if value == "selected" {
                 Config::set_option("managed-server-paused".to_owned(), String::new());
@@ -277,6 +287,86 @@ pub fn handle_command(key: &str, value: &str) {
     }
 }
 
+fn prepare_firewall() {
+    if hbb_common::config::LocalConfig::get_option("access_token").is_empty() {
+        return;
+    }
+    let mut state = FIREWALL_SETUP.lock().unwrap();
+    if state["busy"] == true {
+        return;
+    }
+    *state = serde_json::json!({"busy":true,"verified":false,"message":"Approve the system prompt to allow only BeyondRemote and its bundled server. The firewall stays enabled."});
+    std::thread::spawn(|| {
+        let result = configure_firewall();
+        *FIREWALL_SETUP.lock().unwrap() = match result {
+            Ok(message) => serde_json::json!({"busy":false,"verified":true,"message":message}),
+            Err(error) => {
+                serde_json::json!({"busy":false,"verified":false,"message":error.to_string()})
+            }
+        };
+    });
+}
+
+fn configure_firewall() -> ResultType<String> {
+    install_bundled()?;
+    let (hbbs, hbbr) = server_paths();
+    let app = std::env::current_exe()?;
+    #[cfg(target_os = "windows")]
+    {
+        let quote = |p: &Path| format!("'{}'", p.to_string_lossy().replace('\'', "''"));
+        let specs = [
+            ("Account", &app, "TCP", "21128"),
+            ("Rendezvous", &hbbs, "TCP", "21115,21116"),
+            ("Discovery", &hbbs, "UDP", "21116"),
+            ("Relay", &hbbr, "TCP", "21117"),
+        ];
+        let mut script = "$ErrorActionPreference='Stop'; try {".to_owned();
+        for (label, path, protocol, ports) in specs {
+            let name = format!("BeyondRemote-Staging-{}", label);
+            script.push_str(&format!("$path={}; if(!(Test-Path -LiteralPath $path -PathType Leaf)){{exit 30}}; Get-NetFirewallRule -Name '{}' -ErrorAction SilentlyContinue | Remove-NetFirewallRule; New-NetFirewallRule -Name '{}' -DisplayName 'BeyondRemote Staging {}' -Direction Inbound -Action Allow -Enabled True -Profile Private,Public -Program $path -Protocol {} -LocalPort {} | Out-Null; $rule=Get-NetFirewallRule -Name '{}'; if($rule.Enabled -ne 'True' -or $rule.Action -ne 'Allow'){{exit 31}};", quote(path),name,name,label,protocol,ports,name));
+        }
+        script.push_str("exit 0 } catch { exit 31 }");
+        let (status, _, error) =
+            crate::wake::bounded_setup_command(crate::wake::elevated_powershell(&script))?;
+        if !status.success() {
+            bail!("{} {}", match status.code() { Some(20)=>"Administrator approval was cancelled. No completed firewall setup was confirmed.", Some(30)=>"A bundled server file is missing. Reinstall this build before changing firewall access.", _=>"Windows refused or did not retain the app-specific firewall rules. Open Windows Firewall; an administrator or organization policy may be required." }, error.trim());
+        }
+        return Ok("Windows confirmed app-specific inbound rules for the account connection and bundled server ports. The firewall remains enabled. A connection from another network still needs testing.".to_owned());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let quote = |p: &Path| format!("'{}'", p.to_string_lossy().replace('\'', "'\\''"));
+        let mut shell = String::new();
+        for path in [&app, &hbbs, &hbbr] {
+            shell.push_str(&format!("/usr/libexec/ApplicationFirewall/socketfilterfw --add {} && /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp {} && ", quote(path), quote(path)));
+        }
+        shell.push_str("true");
+        let apple = format!(
+            "do shell script \"{}\" with administrator privileges",
+            shell.replace('\\', "\\\\").replace('"', "\\\"")
+        );
+        let mut command = Command::new("/usr/bin/osascript");
+        command.args(["-e", &apple]);
+        let (status, _, error) = crate::wake::bounded_setup_command(command)?;
+        if !status.success() {
+            bail!("macOS firewall setup was not completed: {}. Approve administrator access or open Firewall Options and allow BeyondRemote, hbbs and hbbr.",error.trim());
+        }
+        for path in [&app, &hbbs, &hbbr] {
+            let output = Command::new("/usr/libexec/ApplicationFirewall/socketfilterfw")
+                .arg("--getappblocked")
+                .arg(path)
+                .output()?;
+            let text = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            if !output.status.success() || !text.contains("allow") {
+                bail!("macOS did not confirm an allowed entry for {}. Open Firewall Options and review it; third-party security tools must be checked separately.",path.file_name().unwrap_or_default().to_string_lossy());
+            }
+        }
+        return Ok("macOS confirmed allowed firewall entries for BeyondRemote and its bundled server. The firewall remains enabled. Test from another network before relying on remote access.".to_owned());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    bail!("Open your system firewall and allow the app and server ports listed in setup.");
+}
+
 fn status() -> ManagedStatus {
     let (hbbs_path, hbbr_path) = server_paths();
     let installed = (hbbs_path.is_file() && hbbr_path.is_file()) || bundled_paths().is_some();
@@ -318,6 +408,7 @@ fn status() -> ManagedStatus {
     ManagedStatus {
         starting: STARTING.load(Ordering::SeqCst),
         router_mapped: MANAGED.lock().unwrap().mapping.is_some(),
+        firewall_setup: FIREWALL_SETUP.lock().unwrap().clone(),
         supported_install: is_install_supported(),
         supported_run: is_run_supported(),
         installed,

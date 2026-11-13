@@ -106,6 +106,29 @@ fn default_gateway() -> ResultType<Ipv4Addr> {
     bail!("Could not identify the router. Connect to a local network and retry setup.")
 }
 
+/// Open only the OS-discovered private gateway; never accept a supplied URL.
+pub fn open_router_settings() -> ResultType<()> {
+    let gateway = default_gateway()?;
+    let url = format!("http://{}", gateway);
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .arg(&url)
+            .spawn()?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("rundll32.exe")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .spawn()?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        bail!("Open {} in your browser to configure this router.", url);
+    }
+    Ok(())
+}
+
 /// OS-only network observation. No packet is sent by UDP connect.
 pub fn network_identity() -> ResultType<(Ipv4Addr, Ipv4Addr)> {
     let gateway = default_gateway()?;

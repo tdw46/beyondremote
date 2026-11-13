@@ -452,3 +452,30 @@ owning-project tracker records the current work without overwriting that branch.
 Evidence: `~/.local/share/beyondremote-migration/turn220/` contains the safe client
 list/capture screenshots, provider-binding read-back and redacted inbound event
 record. Source and shared BeyondStore tracker restrictions from turn 219 remain.
+
+
+## Turn 220 guided desktop setup and Mac frame recovery
+
+- Tyler confirmed Windows-to-Mac mouse and typing after the explicitly approved
+  Device Control grant. A closed Windows session was confirmed disconnected;
+  a stale UI impression is not evidence of continued capture.
+- Implemented local permission checks and guided wake/server setup, with exact
+  failure reasons, bounded operation progress and links to relevant OS settings.
+  Windows installation offers System (recommended, default) and Just for me;
+  staging cleanup preserves the stable app. See `SETUP_ACCEPTANCE.md` for scope.
+- Fixed stale secondary Mac window lifecycle delivery in the pinned Flutter
+  runtime using native focus/visibility events, without a frame timer. The rebuilt
+  staging app displayed changing Windows content; Tyler confirmed streaming
+  display updates are fixed. Existing Mica and stable installations are preserved.
+- Replaced translucent-only permission/wake/server dialogs with a shared clipped
+  glass blur and crisp controls; high-contrast mode uses an opaque surface.
+- Rust release and Swift/Flutter builds passed; wake diagnostic test and three
+  permission widget tests passed. Glass-specific analyzer has no issues. Native
+  glass visual acceptance passed for all three dialogs; 175 installed files match
+  the packaged artifact. Evidence/rollback remain in turn220 outside Git.
+- Windows native build/installer/UAC acceptance remains blocked by the trusted
+  SSH runner timeout, even though the app connection works. Physical wake, iPhone,
+  production client promotion, fenced data synchronization and cutover remain open.
+- These are local UI/OS operations: zero additional Cloudflare requests per dialog
+  open, no new hosted polling, no streamed media through Cloudflare and no paid
+  service. Actual shared-account billing metrics were not remeasured for this fix.

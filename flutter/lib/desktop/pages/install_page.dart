@@ -63,6 +63,8 @@ class _InstallPageBody extends StatefulWidget {
 class _InstallPageBodyState extends State<_InstallPageBody>
     with WindowListener {
   late final TextEditingController controller;
+  final RxBool currentUser = false.obs;
+  final RxString installError = ''.obs;
   final RxBool startmenu = true.obs;
   final RxBool desktopicon = true.obs;
   final RxBool printer = false.obs;
@@ -92,6 +94,7 @@ class _InstallPageBodyState extends State<_InstallPageBody>
   @override
   void dispose() {
     windowManager.removeListener(this);
+    controller.dispose();
     super.dispose();
   }
 
@@ -138,6 +141,28 @@ class _InstallPageBodyState extends State<_InstallPageBody>
             children: [
               Text(translate('Installation'),
                   style: Theme.of(context).textTheme.headlineMedium),
+              if (isWindows)
+                Obx(() => Column(children: [
+                      RadioListTile<bool>(
+                        title: const Text('System (recommended)'),
+                        subtitle: const Text(
+                            'All users. Starts with Windows and supports control of administrator windows. Windows asks for administrator approval.'),
+                        value: false,
+                        groupValue: currentUser.value,
+                        onChanged: btnEnabled.value
+                            ? (_) => _changeScope(false)
+                            : null,
+                      ),
+                      RadioListTile<bool>(
+                        title: const Text('Just for me'),
+                        subtitle: const Text(
+                            'No administrator installation. Runs while you are signed in and the app is open. Cannot control elevated windows or the sign-in screen. To uninstall, close the app and remove its folder.'),
+                        value: true,
+                        groupValue: currentUser.value,
+                        onChanged:
+                            btnEnabled.value ? (_) => _changeScope(true) : null,
+                      ),
+                    ])),
               Row(
                 children: [
                   Text('${translate('Installation Path')}:')
@@ -165,7 +190,14 @@ class _InstallPageBodyState extends State<_InstallPageBody>
                   .marginOnly(bottom: 7),
               Option(desktopicon, label: 'Create desktop icon')
                   .marginOnly(bottom: 7),
-              Option(printer, label: 'Install {$appName} Printer'),
+              Obx(() => currentUser.value
+                  ? const SizedBox.shrink()
+                  : Option(printer, label: 'Install {$appName} Printer')),
+              Obx(() => installError.value.isEmpty
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: SelectableText(installError.value))),
               Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -250,18 +282,53 @@ class _InstallPageBodyState extends State<_InstallPageBody>
         ));
   }
 
-  void install() {
-    do_install() {
-      btnEnabled.value = false;
-      showProgress.value = true;
-      String args = '';
-      if (startmenu.value) args += ' startmenu';
-      if (desktopicon.value) args += ' desktopicon';
-      if (printer.value) args += ' printer';
-      bind.installInstallMe(options: args, path: controller.text);
+  Future<void> _changeScope(bool value) async {
+    btnEnabled.value = false;
+    try {
+      final path = value
+          ? await bind.mainGetCommon(key: 'user-install-path')
+          : bind.installInstallPath();
+      if (!mounted) return;
+      if (path.isEmpty) {
+        installError.value = 'Could not locate your user installation folder.';
+        return;
+      }
+      currentUser.value = value;
+      if (value) printer.value = false;
+      controller.text = path;
+      installError.value = '';
+    } finally {
+      if (mounted) btnEnabled.value = true;
     }
+  }
 
-    do_install();
+  Future<void> install() async {
+    if (!btnEnabled.value) return;
+    btnEnabled.value = false;
+    showProgress.value = true;
+    installError.value = '';
+    String args = currentUser.value ? ' currentuser' : '';
+    if (startmenu.value) args += ' startmenu';
+    if (desktopicon.value) args += ' desktopicon';
+    if (printer.value && !currentUser.value) args += ' printer';
+    await bind.installInstallMe(options: args, path: controller.text);
+    // Local IPC only, bounded to this explicit installation. Success relaunches
+    // the installed app; cancellation/errors keep this form and path intact.
+    for (var i = 0; i < 120 && mounted; i++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      final result = await bind.mainGetAsyncStatus();
+      if (result.trim().isNotEmpty) {
+        installError.value = result;
+        showProgress.value = false;
+        btnEnabled.value = true;
+        return;
+      }
+    }
+    if (mounted) {
+      installError.value =
+          'Still waiting for the installer. Review the Windows approval window before closing or retrying.';
+    }
   }
 
   void selectInstallPath() async {

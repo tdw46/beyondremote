@@ -1,5 +1,6 @@
 import 'dart:async';
 import '../../common/widgets/account_devices_page.dart';
+import '../../common/widgets/device_access_setup.dart';
 import 'dart:io';
 import 'dart:convert';
 
@@ -62,7 +63,8 @@ class _DesktopHomePageState extends State<DesktopHomePage>
     super.build(context);
     if (appName == 'BeyondRemote Staging') {
       return AccountDevicesPage(
-          permissions: buildHelpCards(stateGlobal.updateUrl.value));
+          permissions: buildHelpCards(stateGlobal.updateUrl.value),
+          setup: DeviceAccessSetup(steps: _deviceAccessSteps()));
     }
     final isIncomingOnly = bind.isIncomingOnly();
     return _buildBlock(
@@ -74,6 +76,84 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         if (!isIncomingOnly) Expanded(child: buildRightPane(context)),
       ],
     ));
+  }
+
+  List<DeviceAccessStep> _deviceAccessSteps() {
+    if (bind.isOutgoingOnly()) return [];
+    if (isMacOS) {
+      return [
+        DeviceAccessStep(
+          title: 'Share your screen',
+          description:
+              'Enable BeyondRemote in Screen & System Audio Recording.',
+          action: 'Allow screen sharing',
+          check: () async => bind.mainIsCanScreenRecording(prompt: false),
+          request: () async {
+            bind.mainIsCanScreenRecording(prompt: true);
+            await launchUrl(Uri.parse(
+                'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'));
+          },
+        ),
+        DeviceAccessStep(
+          title: 'Allow mouse and keyboard control',
+          description:
+              'Enable BeyondRemote in Accessibility (Device Control and Data Access on newer macOS).',
+          action: 'Allow device control',
+          check: () async => bind.mainIsProcessTrusted(prompt: false),
+          request: () async {
+            bind.mainIsProcessTrusted(prompt: true);
+            await launchUrl(Uri.parse(
+                'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'));
+          },
+        ),
+        DeviceAccessStep(
+          title: 'Send keyboard shortcuts',
+          description:
+              'Enable Input Monitoring so your keyboard and shortcuts can reach the other computer.',
+          action: 'Allow keyboard input',
+          check: () async => bind.mainIsCanInputMonitoring(prompt: false),
+          request: () async {
+            bind.mainIsCanInputMonitoring(prompt: true);
+            await launchUrl(Uri.parse(
+                'x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent'));
+          },
+        ),
+      ];
+    }
+    if (isWindows && !bind.isDisableInstallation()) {
+      return [
+        DeviceAccessStep(
+          title: 'Install remote access',
+          description:
+              'Windows will ask for administrator approval to install the service and its app-specific firewall rules. This supports control of elevated windows.',
+          action: 'Set up Windows access',
+          check: () async =>
+              (await bind.mainGetCommon(key: 'is-user-install')) == 'true' ||
+              (bind.mainIsInstalled() && !bind.mainIsInstalledLowerVersion()),
+          request: () async {
+            await rustDeskWinManager.closeAllSubWindows();
+            if (bind.mainIsInstalled()) {
+              bind.mainUpdateMe();
+            } else {
+              bind.mainGotoInstall();
+            }
+          },
+        ),
+        DeviceAccessStep(
+          title: 'Enable remote access service',
+          description:
+              'Keep BeyondRemote available to your signed-in devices. Network policy or security software may still require approval.',
+          action: 'Enable service',
+          check: () async =>
+              (await bind.mainGetCommon(key: 'is-user-install')) == 'true' ||
+              !(await mainGetBoolOption(kOptionStopService)),
+          request: () async {
+            await mainSetBoolOption(kOptionStopService, false);
+          },
+        ),
+      ];
+    }
+    return [];
   }
 
   Widget _buildBlock({required Widget child}) {

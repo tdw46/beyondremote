@@ -122,12 +122,18 @@ pub fn goto_install() {
 #[inline]
 pub fn install_me(_options: String, _path: String, _silent: bool, _debug: bool) {
     #[cfg(windows)]
-    std::thread::spawn(move || {
-        allow_err!(crate::platform::windows::install_me(
-            &_options, _path, _silent, _debug
-        ));
-        std::process::exit(0);
-    });
+    {
+        reset_async_job_status();
+        std::thread::spawn(move || {
+            match crate::platform::windows::install_me(&_options, _path, _silent, _debug) {
+                Ok(()) => std::process::exit(0),
+                Err(error) => {
+                    *ASYNC_JOB_STATUS.lock().unwrap() =
+                        format!("Installation did not complete: {}", error)
+                }
+            }
+        });
+    }
 }
 
 #[inline]

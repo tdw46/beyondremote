@@ -2820,7 +2820,17 @@ pub fn main_get_printer_names() -> SyncReturn<String> {
 }
 
 pub fn main_get_common(key: String) -> String {
-    if key == "is-printer-installed" {
+    if key == "user-install-path" {
+        #[cfg(target_os = "windows")]
+        return crate::platform::windows::user_install_path();
+        #[cfg(not(target_os = "windows"))]
+        return String::new();
+    } else if key == "is-user-install" {
+        #[cfg(target_os = "windows")]
+        return crate::platform::windows::is_user_install().to_string();
+        #[cfg(not(target_os = "windows"))]
+        return "false".to_owned();
+    } else if key == "is-printer-installed" {
         #[cfg(target_os = "windows")]
         {
             return match remote_printer::is_rd_printer_installed(&get_app_name()) {
@@ -3024,6 +3034,9 @@ pub fn main_set_common(_key: String, _value: String) {
         crate::hbbs_http::downloader::remove(&_value);
     } else if _key == "cancel-downloader" {
         crate::hbbs_http::downloader::cancel(&_value);
+    } else if _key == "setup-open-settings" {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        crate::wake::open_settings(&_value);
     } else if _key == "wake-prepare" {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         crate::wake::prepare_settings();
