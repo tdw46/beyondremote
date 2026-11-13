@@ -640,3 +640,90 @@ Tyler confirmed physical capital letters and Ctrl+A work; the observed synthetic
 CUA modifier limitation is not a physical keyboard failure.
 This acceptance covers the two current internet networks and the Windows system
 update, not every router, CGNAT configuration, iPhone or production migration.
+
+
+## Turn 226: release keyboard capture on window focus loss (2026-11-13)
+
+Source `b923688c3` fixes a Mac client focus leak: the remote window previously
+unfocused its keyboard on Windows only, while Mac native capture could remain
+active when its pointer never left the remote image. The shared capture gate now
+requires the selected session and an active native window, releases held remote
+keys on blur/minimize/disposal, ignores delayed background hover/focus callbacks,
+and restores capture only when returning to the intended canvas. Flutter key
+handlers also refuse background forwarding. The Windows native system-hotkey
+hook additionally requires its target window to be the actual foreground window.
+Existing key mapping, input-source selection and remote input permissions remain
+unchanged.
+
+All 14 focus-state and existing modifier tests passed on Mac. Changed Dart files
+passed formatting and analysis with five existing informational deprecations,
+no warnings/errors. Mac Rust/Flutter release build and certificate checks passed;
+156 installed files match the signed staging package. Its stable app was unchanged
+and the reopened staging app retained its account and ready device permissions.
+
+The installed Mac build reconnected to Windows over the existing direct internet
+path. Two bounded live checks switched to Calculator while the connection stayed
+open (including raising it without moving the pointer out of the remote canvas):
+local 123/456 appeared in Calculator and not the Windows prompt. Returning to the
+remote session accepted the exact unsubmitted text `remote focus check`; that
+text was cleared without executing it. This is native UI evidence with synthetic
+input, separate from a physical-keyboard confirmation and Windows outgoing-focus
+acceptance. Windows staging build/install status is recorded below.
+
+This fix performs no hosted calls and adds no polling, provider services or
+storage writes. Focus changes use existing local callbacks; no additional
+Cloudflare cost is introduced. Private signing/install/runtime evidence is under
+`~/.local/share/beyondremote-migration/turn226/`.
+
+Tyler subsequently confirmed physical local/remote typing and remote Shift+letters
+work on the installed Mac build. Cmd+Tab was a separate shortcut question: current
+Input source 2 uses Flutter window events and leaves macOS system shortcuts local.
+Windows app switching uses Option/Alt+Tab; the existing swap option exchanges
+Control and Command, not Command and Alt. Input source 1 is the native capture
+mode with its existing macOS permission requirement. No permission or key mapping
+was changed for this fix.
+
+Follow-up `85f94fd23` replaces the numbered input-source labels with **Remote
+shortcuts** and **Local shortcuts**, plus contextual focus behavior. The native
+remote-shortcut default remains source 1; missing macOS authorization now selects
+a temporary effective fallback without permanently saving source 2. Selecting
+Remote shortcuts after approval can start the native hook even if its preference
+was already the default. The menu explains a missing permission and opens the
+existing macOS request; it does not grant it or close the connection. Stored
+explicit preferences and internal compatibility values remain intact.
+
+Follow-up Mac Rust/Flutter build and signing passed; all 156 installed-file hashes
+match again and stable files are unchanged. Toolbar analysis has 22 pre-existing
+info-level deprecations, no warnings/errors. Rustfmt flags four pre-existing
+formatting sections outside the change, retained to avoid unrelated churn.
+
+The final Mac toolbar visibly shows Remote shortcuts / Local shortcuts and the
+focus explanation. Remote shortcuts was selected using existing device-control
+approval; no new OS grant was needed. Tyler explicitly confirmed both native
+remote shortcuts while focused and local typing after leaving work correctly.
+
+Windows Codex fast-forwarded the same final source while preserving its local
+lockfile and Mica styling. All 14 focused tests and changed-Dart formatting passed;
+analysis reported 27 existing info-level notices, no warnings/errors. The final
+Rust release passed in 11m37s (18 existing warnings), Flutter release in 188.6s,
+and the 96-file bundle manifest was pinned to `85f94fd23`. The pre-install check
+reported all 98 files in the running system installation unchanged.
+
+The bounded elevated wrapper reported it was waiting for the active staging
+connection to close, with both session guards and rollback checks retained.
+Mac disconnected cleanly. The first subsequent reconnect at 15:13 EST failed;
+separate bounded TCP checks also timed out against the previously working public
+direct route. The account API still publishes that route with a valid public key.
+Windows is not exposed as a connected Codex host here, and its desktop agent's
+post-install result is unavailable while remote access is down. Tyler was given
+a concise phone-to-Windows-Codex request to inspect the installer result and
+restore the existing staging service/direct route without changing stable files,
+account settings or firewall protections. **Windows install/reconnect acceptance
+is pending; do not report it as verified or the broader migration complete.**
+
+Mac's temporary Local shortcuts setting used for synthetic Windows coordination
+was restored to Remote shortcuts with the app cleanly quit, preserving every
+other preference. Reopening retained the signed-in account and ready device
+permissions. Private before/after evidence and Windows observed build status are
+under the turn226 evidence directory. No cloud service or permission changes
+were made for this input fix.
