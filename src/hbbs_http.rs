@@ -3,6 +3,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 pub mod account;
+pub mod account_session;
 pub mod downloader;
 mod http_client;
 pub mod record_upload;

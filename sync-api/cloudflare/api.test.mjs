@@ -24,6 +24,17 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  const call=async(path,{method='POST',token,body={}}={})=>{const r=await worker.fetch(new Request('https://api.test'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},...(['GET','HEAD'].includes(method)?{}:{body:JSON.stringify(body)})}),env);let text=await r.text();return {status:r.status,headers:r.headers,data:text?JSON.parse(text):null};};
  const login=async n=>{const r=await call('/api/login',{body:{username:'test'+n,password,id:'device'+n,deviceInfo:{name:'Computer '+n,os:'Darwin'}}});assert.equal(r.status,200);return r.data.access_token;};
  const one=await login(1),two=await login(2);
+ await t.test('production activation and restore fences fail closed',async()=>{
+ const ping=new Request('https://api.test/api/beyondremote/ping');
+ for(const patch of [{ENVIRONMENT:'production'},{ENVIRONMENT:'production',DATABASE_ROLE:'production'},{DATABASE_ROLE:'production'},{BASE_URL:'https://wrong.test'}])assert.equal((await worker.fetch(ping,{...env,...patch})).status,503);
+ const prod={...env,ENVIRONMENT:'production',DATABASE_ROLE:'production',PRODUCTION_ENABLED:'1',MIGRATION_READ_ONLY:'1'};
+ assert.equal((await worker.fetch(ping,prod)).status,200);
+ for(const path of ['/api/login','/api/logout','/api/currentUser'])assert.equal((await worker.fetch(new Request('https://api.test'+path,{method:'POST'}),prod)).status,503);
+ for(const path of ['/auth/google/callback','/api/oidc/auth-query'])assert.equal((await worker.fetch(new Request('https://api.test'+path),prod)).status,503);
+ assert.equal((await worker.fetch(new Request('https://api.test/api/peers',{headers:{Authorization:'Bearer '+one}}),prod)).status,200);
+ assert.equal((await worker.fetch(new Request('https://api.test/api/peers'),prod)).status,401);
+ });
+
  await t.test('wake tickets isolate accounts, purposes, revocation and concurrency',async()=>{
  const register=(id,deviceInfo,token=one)=>call('/api/currentUser',{token,body:{id,deviceInfo}});
  const helperInfo={os:'Darwin',wake_helper:'wake-v1',account_connection:'ticket-v1',account_direct_port:21128,account_public_key:'A'.repeat(43)+'=',managed_server_running:true,managed_server_public_host:'home.example.test',managed_server_key:'B'.repeat(43)+'=',local_ips:['192.168.4.1']};

@@ -334,3 +334,84 @@ The final session was disconnected, leaving BeyondRemote Staging ready on its
 device list. Stable production app installations were not replaced. The shared
 BeyondStore tracker gate above remains; this owning-project tracker and private
 evidence are the current authoritative record for these connection fixes.
+
+
+## Turn 219 readiness and installed logout verification — 2026-11-13
+
+Production API/DNS remain on InMotion; migration is not yet finalized. The
+reviewed cutover/rollback sequence is in `PRODUCTION_API_CUTOVER.md`.
+
+### Completed
+
+- A fresh repeatable-read production snapshot at 13:32:51 UTC contains 43 rows:
+  2 users, 12 sessions, 19 OAuth requests, 0 legacy address books, 4 peers,
+  2 tags and 4 devices. One source session is unexpired. Source entrypoint hash
+  remains `0ca083cc4ef8a5db3a82cbd7b2a5f9a61af8d9435f4e6541ad83b814f1c6bb11`.
+- The new local workerd/D1 rehearsal verifies every original column, foreign keys,
+  deliberate production-only active-session promotion and recovery after a
+  synthetic edit. It found and fixed PostgreSQL `+00` timestamps being unreadable
+  to SQLite expiry checks; conversion to `+00:00` retains fractional precision.
+  The one active source session remains active in the isolated rehearsal.
+- Imported pending OAuth responses cannot be redeemed: native-only guards now
+  cover start, callback and response claim. Built-workerd tests exercise Google
+  and GitHub, provider mismatch and state replay. Environment/role mismatch and
+  unapproved production activation fail closed. A read-only destination fence
+  blocks writes and OAuth claims during acceptance.
+- All 19 API tests pass, including 100 concurrent synthetic accounts/200 requests
+  locally. No hosted load test or database import was performed.
+- Staging Worker version `3ec23997-569a-45bd-b9f2-39122bba265a` is deployed.
+  Existing secrets and the staging DB binding were preserved. Live health,
+  GitHub provider listing, guest 401/no-store and robots checks pass. Bare urllib
+  probes failed before repeating with an identified acceptance user agent;
+  those failures are not counted as application acceptance.
+- A local watch event closes inbound account streams after local logout/account
+  replacement; unchanged credentials do not interrupt them. The UI closes outgoing
+  staging session windows on account reset. No new HTTP timer or heartbeat.
+  The cleared service credential cannot fall back to a stale local token after
+  an account-change event. Rust check, targeted event test and Dart analysis pass.
+- Mac release Rust and Flutter builds pass. Xcode 27 required a local staging
+  deployment-target override of 12.0. Packaging preserved the modified runtime
+  database in the pinned server checkout and reused the exact hash-verified,
+  unchanged bundled hbbs/hbbr binaries. The installed staging bundle's 175 files
+  match its manifest and deep/strict signing verifies. Stable app is unchanged.
+- The updated installed Mac app connected to the Windows laptop and rendered its
+  desktop. With that session open, Logout returned the main app to Login and the
+  remote window disappeared from the Window menu. GitHub sign-in then restored
+  the same account and device list. This is real outgoing-session logout proof,
+  not inbound capture or remote-admin push-revocation proof.
+
+### Remaining release gates
+
+- Separate Google staging client form is prepared in the existing Beyond Remote
+  Google project, with the exact staging callback. Creation/secret storage awaits
+  the computer-use action-time credential approval. Production still has both
+  Google and GitHub; staging currently advertises GitHub only.
+- macOS System Settings explicitly shows BeyondRemote Staging Screen & System
+  Audio Recording OFF, stable app ON. Enabling staging awaits action-time capture
+  permission approval. Windows-to-Mac capture is not accepted yet.
+- Strict SSH to the saved Windows runner address timed out. App connectivity did
+  work; these are separate transports. Do not weaken host keys or firewall rules
+  to hide the runner issue. Windows still needs this turn's logout build and the
+  real sleep/wake test. Existing awake-helper wake proof is not sleeping-device
+  proof. Physical iPhone acceptance remains deferred by Tyler.
+- Stable production clients still use legacy behavior behind `STAGING_BUILD` and
+  app-name gates. Prepare/accept the native production client promotion together
+  with the final fresh data sync and API cutover; DNS alone is insufficient.
+- Remote deletion/disablement denies new API access and handshakes, but there is
+  no server-push revocation of an already established media stream. Local logout
+  is fixed; do not equate it with immediate remote administrative revocation.
+
+### Cost and records
+
+The restore and concurrency runs used local workerd/D1: zero hosted DB rows
+read/written. Runtime permission/event fixes add zero hosted requests. Production
+activation guards run before DB access, and OAuth's native flag adds no query.
+Existing route/grant/authorize operation counts remain applicable. No new paid
+service, media relay, hosted load test or polling was enabled. Historical free
+plan figures above are not a current account plan claim; budget against the
+shared actual account plan before cutover, including other sites.
+
+Private evidence, exact manifests, source snapshot and rollback bundle are under
+`~/.local/share/beyondremote-migration/turn219/`. The shared BeyondStore tracker
+remains blocked by its unresolved production/source freshness comparison; this
+owning-project tracker records the current work without overwriting that branch.

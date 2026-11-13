@@ -267,9 +267,13 @@ pub fn get_builtin_option(key: &str) -> String {
 #[inline]
 pub fn set_local_option(key: String, value: String) {
     if key == "access_token" {
+        let previous = LocalConfig::get_option(&key);
         mirror_service_account_access_token(&value);
+        LocalConfig::set_option(key, value.clone());
+        crate::hbbs_http::account_session::changed(&previous, &value);
+    } else {
+        LocalConfig::set_option(key, value);
     }
-    LocalConfig::set_option(key.clone(), value);
 }
 
 fn mirror_service_account_access_token(value: &str) {

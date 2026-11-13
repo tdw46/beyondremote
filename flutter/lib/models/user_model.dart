@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 
 import '../common.dart';
 import '../utils/http_service.dart' as http;
+import '../utils/multi_window_manager.dart';
 import 'model.dart';
 import 'platform_model.dart';
 
@@ -140,6 +141,10 @@ class UserModel {
 
   Future<void> reset({bool resetOther = false}) async {
     await bind.mainSetLocalOption(key: 'access_token', value: '');
+    if (appName == 'BeyondRemote Staging' && isDesktop) {
+      // End outgoing sessions as well as the native inbound account streams.
+      await rustDeskWinManager.closeAllSubWindows();
+    }
     if (appName == 'BeyondRemote Staging' && isDesktop) {
       await bind.mainSetCommon(key: 'managed-server-reconcile', value: '');
     }

@@ -617,8 +617,16 @@ impl Connection {
             (_tx_clip, rx_clip) = mpsc::unbounded_channel::<i32>();
         }
 
+        let mut account_changes = crate::hbbs_http::account_session::subscribe();
         loop {
             tokio::select! {
+                _ = account_changes.changed() => {
+                    if !conn.account_access_token.is_empty() {
+                        conn.send_close_reason_no_retry("Account signed out or changed").await;
+                        conn.on_close("account changed", true).await;
+                        break;
+                    }
+                }
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
 
                 Some(data) = rx_from_cm.recv() => {
@@ -2232,7 +2240,7 @@ impl Connection {
 
     async fn validate_same_account_device(&self) -> bool {
         let mut target_access_token = Config::get_option(BR_ACCOUNT_ACCESS_TOKEN_OPTION);
-        if target_access_token.trim().is_empty() {
+        if target_access_token.trim().is_empty() && !crate::hbbs_http::account_session::has_changed() {
             target_access_token = LocalConfig::get_option("access_token");
         }
         if target_access_token.trim().is_empty() || self.account_access_token.trim().is_empty() {

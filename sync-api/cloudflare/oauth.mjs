@@ -15,7 +15,7 @@ export async function oauth(db,env,request,path,b){
  if(path==='/api/oidc/auth-query'){
   const code=url.searchParams.get('code')||'';if(code.length!==64)fail('No authed oidc is found',404);
   // Three bounded deliveries tolerate a lost response; the random code expires in ten minutes.
-  const r=await db.prepare('UPDATE br_auth_requests SET delivered=delivered+1 WHERE code=? AND julianday(expires_at)>julianday(?) AND auth_body IS NOT NULL AND delivered<3 RETURNING auth_body').bind(code,stamp()).first();
+  const r=await db.prepare('UPDATE br_auth_requests SET delivered=delivered+1 WHERE native=1 AND code=? AND julianday(expires_at)>julianday(?) AND auth_body IS NOT NULL AND delivered<3 RETURNING auth_body').bind(code,stamp()).first();
   if(!r)fail('No authed oidc is found',404);return parse(r.auth_body);
  }
  const match=path.match(/^\/auth\/(github|google)\/(start|callback)$/);if(!match)fail('Not found',404);
@@ -25,12 +25,12 @@ export async function oauth(db,env,request,path,b){
  if(action==='start'){
   const code=url.searchParams.get('code')||'',nonce=token();if(code.length!==64)fail('OAuth request not found',404);
   const state=code+'.'+nonce;
-  const r=await db.prepare('UPDATE br_auth_requests SET state_hash=? WHERE code=? AND op=? AND claimed=0 AND julianday(expires_at)>julianday(?) RETURNING code').bind(await digest(state),code,provider,stamp()).first();if(!r)fail('OAuth request not found',404);
+  const r=await db.prepare('UPDATE br_auth_requests SET state_hash=? WHERE native=1 AND code=? AND op=? AND claimed=0 AND julianday(expires_at)>julianday(?) RETURNING code').bind(await digest(state),code,provider,stamp()).first();if(!r)fail('OAuth request not found',404);
   const args=new URLSearchParams({client_id:client,redirect_uri:redirect,state,scope:provider==='github'?'read:user user:email':'openid email profile',response_type:'code'});
   return new Response(null,{status:302,headers:{Location:(provider==='github'?'https://github.com/login/oauth/authorize?':'https://accounts.google.com/o/oauth2/v2/auth?')+args}});
  }
  const state=url.searchParams.get('state')||'',code=url.searchParams.get('code')||'';if(!/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(state)||!code||code.length>2048)fail('Invalid OAuth state');
- const req=await db.prepare('UPDATE br_auth_requests SET claimed=1 WHERE code=? AND op=? AND state_hash=? AND claimed=0 AND julianday(expires_at)>julianday(?) RETURNING *').bind(state.split('.')[0],provider,await digest(state),stamp()).first();if(!req)fail('Invalid or expired OAuth state');
+ const req=await db.prepare('UPDATE br_auth_requests SET claimed=1 WHERE native=1 AND code=? AND op=? AND state_hash=? AND claimed=0 AND julianday(expires_at)>julianday(?) RETURNING *').bind(state.split('.')[0],provider,await digest(state),stamp()).first();if(!req)fail('Invalid or expired OAuth state');
  const exchange=await providerJSON(provider==='github'?'https://github.com/login/oauth/access_token':'https://oauth2.googleapis.com/token',{method:'POST',headers:{Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:client,client_secret:secret,code,redirect_uri:redirect,grant_type:'authorization_code'})});
  if(!exchange.access_token)fail('OAuth login failed');
  const headers={Authorization:'Bearer '+exchange.access_token,Accept:'application/json','User-Agent':'BeyondRemote'};

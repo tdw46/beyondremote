@@ -917,7 +917,10 @@ async fn handle(data: Data, stream: &mut Connection) {
                 if let Some(v) = value.get("privacy-mode-impl-key") {
                     crate::privacy_mode::switch(v);
                 }
+                let previous = Config::get_option("beyondremote-account-access-token");
+                let current = value.get("beyondremote-account-access-token").cloned().unwrap_or_default();
                 Config::set_options(value);
+                crate::hbbs_http::account_session::changed(&previous, &current);
                 allow_err!(stream.send(&Data::Options(None)).await);
             }
         },
@@ -1759,7 +1762,10 @@ pub async fn set_options(value: HashMap<String, String>) -> ResultType<()> {
         // do not put below before connect, because we need to check should_exit
         c.next_timeout(1000).await.ok();
     }
+    let previous = Config::get_option("beyondremote-account-access-token");
+    let current = value.get("beyondremote-account-access-token").cloned().unwrap_or_default();
     Config::set_options(value);
+    crate::hbbs_http::account_session::changed(&previous, &current);
     Ok(())
 }
 
