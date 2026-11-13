@@ -154,6 +154,10 @@ server selection to other clients; there is no claim of immediate push updates.
 
 Validation: 16 isolated API tests; three router-module tests including actual
 create/read-back/remove of all four mappings on the Mac's gateway; Rust 1.75
-release build. Runtime installation, Windows build and cross-network acceptance
-must be recorded separately after they finish. Exploratory transport/signaling
-files from turn214 remain excluded from this release.
+release builds on Mac and Windows. Both staging installations passed hash checks.
+The Mac server is running with verified owned mappings, and Windows reaches its
+TCP listeners on the LAN. Staging routing version is
+`a401ee91-5428-48bc-aef6-4e205f4187b8`; cross-network desktop acceptance is pending.
+See `docs/CONNECTION_SERVER_MIGRATION.md` in the repository root for runtime
+evidence, default setup, cost boundaries and the requested mesh VPN evaluation.
+Exploratory transport/signaling files from turn214 remain excluded from this release.
