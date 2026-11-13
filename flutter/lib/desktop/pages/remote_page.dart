@@ -16,6 +16,7 @@ import '../../common/widgets/dialog.dart';
 import '../../common/widgets/toolbar.dart';
 import '../../models/model.dart';
 import '../../models/input_model.dart';
+import '../../models/remote_keyboard_capture.dart';
 import '../../models/platform_model.dart';
 import '../../common/shared_state.dart';
 import '../../utils/image.dart';
@@ -79,7 +80,17 @@ class _RemotePageState extends State<RemotePage>
         TickerProviderStateMixin {
   Timer? _timer;
   String keyboardMode = "legacy";
-  bool _isWindowBlur = false;
+  late final RemoteKeyboardCapture _keyboardCapture;
+  bool get _isWindowBlur => !_keyboardCapture.windowFocused;
+
+  bool get _isSelectedSession {
+    final tabs = widget.tabController?.state.value;
+    return tabs == null ||
+        (tabs.selected >= 0 &&
+            tabs.selected < tabs.tabs.length &&
+            tabs.tabs[tabs.selected].key == widget.id);
+  }
+
   final _cursorOverImage = false.obs;
   late RxBool _showRemoteCursor;
   late RxBool _zoomCursor;
@@ -122,6 +133,11 @@ class _RemotePageState extends State<RemotePage>
   void initState() {
     super.initState();
     _ffi = FFI(widget.sessionId);
+    _keyboardCapture = RemoteKeyboardCapture(
+      onCapture: (active) => _ffi.inputModel.enterOrLeave(active),
+      isSelected: () => _isSelectedSession,
+    );
+    _keyboardCapture.windowFocus(stateGlobal.isFocused.value);
     Get.put<FFI>(_ffi, tag: widget.id);
     _ffi.imageModel.addCallbackOnFirstImage((String peerId) {
       _ffi.canvasModel.activateLocalCursor();
@@ -234,13 +250,9 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowBlur() {
     super.onWindowBlur();
-    // On windows, we use `focus` way to handle keyboard better.
-    // Now on Linux, there's some rdev issues which will break the input.
-    // We disable the `focus` way for non-Windows temporarily.
-    if (isWindows) {
-      _isWindowBlur = true;
-      // unfocus the primary-focus when the whole window is lost focus,
-      // and let OS to handle events instead.
+    // Release native hooks even if the pointer never left the remote image.
+    _keyboardCapture.windowFocus(false);
+    if (isWindows || isMacOS) {
       _rawKeyFocusNode.unfocus();
     }
     stateGlobal.isFocused.value = false;
@@ -256,14 +268,14 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowFocus() {
     super.onWindowFocus();
-    // See [onWindowBlur].
-    if (isWindows) {
-      _isWindowBlur = false;
-    }
     stateGlobal.isFocused.value = true;
+    _keyboardCapture.windowFocus(true);
+    if (_keyboardCapture.resumeCanvas && (isWindows || isMacOS)) {
+      _rawKeyFocusNode.requestFocus();
+    }
 
     // Restore relative mouse mode constraints when window regains focus.
-    if (_ffi.inputModel.relativeMouseMode.value) {
+    if (_isSelectedSession && _ffi.inputModel.relativeMouseMode.value) {
       _rawKeyFocusNode.requestFocus();
       _ffi.inputModel.onWindowFocus();
     }
@@ -275,7 +287,7 @@ class _RemotePageState extends State<RemotePage>
     // On windows, we use `onWindowRestore` way to handle window restore from
     // a minimized state.
     if (isWindows) {
-      _isWindowBlur = false;
+      _keyboardCapture.windowFocus(true);
     }
     WakelockManager.enable(_uniqueKey);
     // Update pointer lock center when window is restored
@@ -326,6 +338,8 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowMinimize() {
     super.onWindowMinimize();
+    _keyboardCapture.windowFocus(false);
+    if (isWindows || isMacOS) _rawKeyFocusNode.unfocus();
     WakelockManager.disable(_uniqueKey);
     // Release cursor constraints when minimized
     if (_ffi.inputModel.relativeMouseMode.value) {
@@ -356,6 +370,8 @@ class _RemotePageState extends State<RemotePage>
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     debugPrint("REMOTE PAGE dispose session $sessionId ${widget.id}");
+
+    _keyboardCapture.release();
 
     // Defensive cleanup: ensure host system-key propagation is reset even if
     // MouseRegion.onExit never fired (e.g., tab closed while cursor inside).
@@ -431,22 +447,12 @@ class _RemotePageState extends State<RemotePage>
                   onFocusChange: (bool imageFocused) {
                     debugPrint(
                         "onFocusChange(window active:${!_isWindowBlur}) $imageFocused");
-                    // See [onWindowBlur].
-                    if (isWindows) {
-                      if (_isWindowBlur) {
-                        imageFocused = false;
-                        Future.delayed(Duration.zero, () {
-                          _rawKeyFocusNode.unfocus();
-                        });
-                      }
-                      if (imageFocused) {
-                        _ffi.inputModel.enterOrLeave(true);
-                      } else {
-                        _ffi.inputModel.enterOrLeave(false);
-                      }
+                    if (isWindows || isMacOS) {
+                      _keyboardCapture.canvasFocus(imageFocused);
                     }
                   },
                   inputModel: _ffi.inputModel,
+                  canForward: () => _keyboardCapture.canForward,
                   child: getBodyForDesktop(context))),
           Stack(
             children: [
@@ -549,11 +555,11 @@ class _RemotePageState extends State<RemotePage>
     }
 
     // See [onWindowBlur].
-    if (!isWindows) {
+    if (!isWindows && _keyboardCapture.canForward) {
       if (!_rawKeyFocusNode.hasFocus) {
         _rawKeyFocusNode.requestFocus();
       }
-      _ffi.inputModel.enterOrLeave(true);
+      _keyboardCapture.canvasFocus(true);
     }
   }
 
@@ -576,7 +582,7 @@ class _RemotePageState extends State<RemotePage>
 
     // See [onWindowBlur].
     if (!isWindows) {
-      _ffi.inputModel.enterOrLeave(false);
+      _keyboardCapture.canvasFocus(false);
     }
   }
 
@@ -608,11 +614,12 @@ class _RemotePageState extends State<RemotePage>
         if (_isWindowBlur) {
           debugPrint(
               "Unexpected status: onPointerDown is triggered while the remote window is in blur status");
-          _isWindowBlur = false;
+          _keyboardCapture.windowFocus(true);
         }
         if (!_rawKeyFocusNode.hasFocus) {
           _rawKeyFocusNode.requestFocus();
         }
+        _keyboardCapture.canvasFocus(true);
       },
       inputModel: _ffi.inputModel,
       child: child,

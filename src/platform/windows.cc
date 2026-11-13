@@ -733,7 +733,12 @@ extern "C"
 
             // Grabbing everything seems to mess up some keyboard state that
             // FLTK relies on, so just grab the keys that we normally cannot.
-            if (stop_system_key_propagate && is_system_hotkey(msgInfo->vkCode, wParam))
+            // A delayed hover/blur notification must never steal shortcuts from
+            // another application or another BeyondRemote window.
+            const HWND foreground = GetForegroundWindow();
+            const bool target_focused = target_wnd && foreground &&
+                GetAncestor(foreground, GA_ROOT) == GetAncestor(target_wnd, GA_ROOT);
+            if (target_focused && stop_system_key_propagate && is_system_hotkey(msgInfo->vkCode, wParam))
             {
                 PostMessage(target_wnd, wParam, msgInfo->vkCode,
                             (msgInfo->scanCode & 0xff) << 16 |
