@@ -1525,10 +1525,8 @@ pub mod input_source {
         #[cfg(target_os = "macos")]
         if !crate::platform::macos::is_can_input_monitoring(false) {
             log::error!("init_input_source, is_can_input_monitoring() false");
-            set_local_option(
-                CONFIG_OPTION_INPUT_SOURCE.to_string(),
-                CONFIG_INPUT_SOURCE_2.to_string(),
-            );
+            // Use window events temporarily, without turning a missing OS
+            // permission into a permanent preference for local shortcuts.
             return;
         }
         let cur_input_source = get_cur_session_input_source();
@@ -1540,7 +1538,10 @@ pub mod input_source {
 
     pub fn change_input_source(session_id: SessionID, input_source: String) {
         let cur_input_source = get_cur_session_input_source();
-        if cur_input_source == input_source {
+        if cur_input_source == input_source
+            && (input_source != CONFIG_INPUT_SOURCE_1
+                || super::IS_RDEV_ENABLED.load(super::Ordering::SeqCst))
+        {
             return;
         }
         if input_source == CONFIG_INPUT_SOURCE_1 {
@@ -1563,6 +1564,10 @@ pub mod input_source {
 
     #[inline]
     pub fn get_cur_session_input_source() -> String {
+        #[cfg(target_os = "macos")]
+        if !crate::platform::macos::is_can_input_monitoring(false) {
+            return CONFIG_INPUT_SOURCE_2.to_string();
+        }
         #[cfg(target_os = "linux")]
         if !crate::platform::linux::is_x11() {
             return CONFIG_INPUT_SOURCE_2.to_string();

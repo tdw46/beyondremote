@@ -2379,13 +2379,28 @@ class _KeyboardMenu extends StatelessWidget {
     final children = <Widget>[Divider()];
     children.addAll(supportedInputSourceList.map((e) {
       final d = e as List<dynamic>;
+      final isRemoteShortcuts = d[0] == 'Input source 1';
       return RdoMenuButton<String>(
-        child: Text(translate(d[1] as String)),
+        child: Text(translate(
+            isRemoteShortcuts ? 'Remote shortcuts' : 'Local shortcuts')),
         value: d[0] as String,
         groupValue: inputSource,
         onChanged: enabled
             ? (v) async {
                 if (v != null) {
+                  if (isMacOS &&
+                      v == 'Input source 1' &&
+                      !bind.mainIsCanInputMonitoring(prompt: false)) {
+                    bind.mainIsCanInputMonitoring(prompt: true);
+                    msgBox(
+                        ffi.sessionId,
+                        'custom-nocancel',
+                        'Allow remote shortcuts',
+                        'Allow keyboard access in macOS Settings, then select Remote shortcuts again. Your current keyboard mode stays available.',
+                        '',
+                        ffi.dialogManager);
+                    return;
+                  }
                   await stateGlobal.setInputSource(ffi.sessionId, v);
                   await ffi.ffiModel.checkDesktopKeyboardMode();
                   await ffi.inputModel.updateKeyboardMode();
@@ -2395,6 +2410,19 @@ class _KeyboardMenu extends StatelessWidget {
         ffi: ffi,
       );
     }));
+    children.add(Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      child: SizedBox(
+        width: 260,
+        child: Builder(
+            builder: (context) => Text(
+                  translate(inputSource == 'Input source 1'
+                      ? 'Shortcuts go to the remote computer only while this session is focused.'
+                      : 'System shortcuts stay on this computer. Typing still goes to the focused remote session.'),
+                  style: Theme.of(context).textTheme.bodySmall,
+                )),
+      ),
+    ));
     return Column(children: children);
   }
 
