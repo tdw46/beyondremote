@@ -578,3 +578,65 @@ without deleting that database or bypassing the guard. App launch visibly retain
 the signed-in account and “Device access is set up.” Stable Mac bundle hashes
 were unchanged. This local reinstall check does not substitute for the still
 pending Windows internet playback/input test.
+
+
+## Turn 225: real direct internet recovery (2026-11-13)
+
+Windows report showed the corrected `9ceaa836a` build in the per-user folder,
+while the running staging service still used the old Program Files build. The
+new rebuild helper refuses that split-install situation and identifies the
+verified system update required; it does not overwrite the stable app.
+
+Live bounded checks superseded the report's earlier unavailable-listener result:
+the router's existing public TCP endpoint returned a signed device identity that
+verified against the fresh account-owned Windows device key (145–184 ms for the
+diagnostic handshake). No SSH port or new firewall permission was exposed.
+
+Client source `484810609` remembers a successfully verified public endpoint only
+for its exact API and device key. Every connection still requires fresh
+server-side account authorization, a new pinned-key handshake and the existing
+one-use admission ticket. Cache tests reject changed keys/API and invalid or
+non-public endpoints. A cache is a candidate, never proof of presence or access.
+For this recovery only, the old service had not published its route, so a bounded
+standalone signed-handshake check seeded the candidate locally; this is not proof
+of automatic first-time setup.
+
+Both Rust cache tests and the Flutter-library cargo check passed (existing
+warnings). Mac staging was rebuilt with the unchanged persistent signing identity
+and 156 installed hashes verified. Stable app bytes and unrelated dirty source
+were preserved. At 14:19 EST the actual Mac-to-Windows session established a
+direct encrypted **internet** connection in approximately 1.25 seconds after the
+route log. The Windows desktop visibly updated and accepted clicks and text.
+Synthetic uppercase/control events did not arrive as expected, while ordinary
+text and Backspace worked. Tyler subsequently confirmed physical capital letters
+and Ctrl+A both work through the actual remote session.
+
+No hosted polling, streaming relay, database writes or provider service was added
+by the client candidate cache. It adds at most one bounded TCP candidate attempt
+when the fresh authorized API route lacks a public endpoint; successful changes
+are saved locally once. Cloudflare remains account authorization, not the screen
+stream. Shared-account billing totals were not remeasured. Private build, rollback
+and signed-handshake evidence is under
+`~/.local/share/beyondremote-migration/turn225/`.
+
+Windows Codex inspected the exact prepared system installer and added a bounded
+wait wrapper retaining the original manifest, backup, stable-file and session
+guards. Tyler approved its normal Windows UAC prompt through the working remote
+session. The system update subsequently passed all 96 installed-file hashes and its
+98-file rollback backup check, as reported by Windows Codex on the live desktop.
+The staging service restarted and account identity was retained. A fresh
+owner-authenticated API read now returns its public route. At 14:26:27 EST,
+Mac reconnected using that published route in approximately 1.26 seconds after
+route retrieval, without the cached-candidate recovery path. Live video and
+remote text/clicks worked after reinstall. Windows' initial listener script
+reported zero despite this connection. Its follow-up found an established
+TCP 21128 connection and a PowerShell enum-conversion error on another row.
+Windows Codex corrected that false-negative conclusion in its result file and
+rechecked all 96 hashes, the 98-file rollback, stable paths and unchanged SSH.
+No service was restarted during the acceptance session.
+
+The existing keyboard setting was restored after a bounded alternate-source test.
+Tyler confirmed physical capital letters and Ctrl+A work; the observed synthetic
+CUA modifier limitation is not a physical keyboard failure.
+This acceptance covers the two current internet networks and the Windows system
+update, not every router, CGNAT configuration, iPhone or production migration.
