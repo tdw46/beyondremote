@@ -113,3 +113,29 @@ Windows remote desktop connects, but reports a foreground-elevation restriction.
 The simplified build first reported both Screen Recording and device control **Allowed** through the running app's native checks. It was quit, then all 175 bundle files were replaced with a separately signed build (CFBundleVersion 68 → 69) with a different code seal and an identical designated requirement. All installed file hashes and deep/strict signatures passed. On relaunch it immediately showed **Device access is set up**; opening Review confirmed both permissions still **Allowed**. No permission reset, toggle or new approval was performed between those two builds. This verifies local permission retention across the tested reinstall, not public notarization or every future macOS release.
 
 Evidence: `~/.local/share/beyondremote-migration/turn223/reinstall-tested-signatures.json` and `trusted-reinstall-installed-manifest.json`. The current installed app uses the same final Flutter/Rust code as this branch; build number 69 distinguishes the reinstall rehearsal. The active Mac native setup has only two required steps. These checks add zero Cloudflare operations.
+
+### Windows desktop-agent continuation
+
+When the trusted SSH runner is unavailable, use the existing Codex CLI in Tyler's
+signed-in Windows desktop session for authorized builds and GUI-dependent work.
+Tyler explicitly approved this fallback; use GPT-6-Astra with medium reasoning.
+The runner and desktop user have separate permissions, environments and login
+state. Inspect the existing session and preserve its work; do not copy credentials
+or assume runner access represents desktop access. Keep each approval scoped to
+the displayed operation.
+
+On November 13 the desktop agent fetched and reconciled exact source
+`2e8d9ab218a691b50725a19a014e8a1ce8d59bb6`, preserving the Mica changes and dirty
+work. Native Rust release, Flutter Windows build, connection-server packaging and
+all six setup tests passed. The original installer correctly refused replacement
+while the Mac remote session was connected. A no-rebuild replacement of the
+verified 96-file bundle was then started with the same session guard, rollback
+verification and staging-only destination. Windows staging subsequently became
+unreachable; installed-hash, relaunch and native wizard acceptance remain pending
+until the desktop agent's result can be read. Do not label this an accepted install.
+
+Windows evidence is in
+`C:\Users\tyler\Documents\BeyondRemote-Staging-Handoff\WINDOWS-CODEX-RESULT.md`
+and `logs\readiness-219-install.json` when produced. Mac handoff evidence is
+`~/.local/share/beyondremote-migration/turn223/windows-desktop-handoff.json`.
+No paid CI or Cloudflare build compute was used.
