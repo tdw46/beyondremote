@@ -5,6 +5,39 @@ quality-of-life work. Do not attempt another Windows elevation or app replacemen
 until Tyler is available locally. The recovery handoff is in
 [the cutover checklist](PRODUCTION_API_CUTOVER.md#dns-propagation-and-independent-app-recovery).
 
+## Production acceptance
+
+**LIVE on Cloudflare since November 13, 2026, about 21:07 UTC.**
+`api.beyondstudios.us` now uses Worker version
+`2608210c-9132-453d-a42b-04cb5e1ecb06` and the separate production D1 below.
+Normal-DNS HTTPS, the original saved Mac login, both real GitHub and Google
+browser sign-ins, owner isolation, logout revocation and preserved legacy
+connection-server configuration passed. Twenty-two bounded live probes took
+86–286ms; these are network samples, not a capacity guarantee.
+
+The final source snapshot at 21:06:04 UTC had SHA256
+`b66e89c1a8631624977b99a798e7f6097bfc34ce9fa3b51b02f58e4344de05f8`.
+All 43 records and original columns matched after the fenced refresh; foreign
+keys and local recovery passed. The refresh/verification used 291 rows read,
+179 written and 10 REST query requests. The subsequent real Google sign-in
+created Tyler's separate Google identity; it is intentionally retained. Acceptance
+sessions were revoked, exact test OAuth flow rows removed, and the existing
+Mac session remains valid. Original source rows still match the final snapshot.
+
+The source PHP no longer opens PostgreSQL: it is a temporary HTTPS forwarding
+bridge for clients with cached InMotion DNS. Cloudflare is the sole writer.
+All unrelated DNS/mail records were preserved. **Do not call the bridge fully
+retired or cancel InMotion yet.** After delegation/record TTLs have expired,
+verify normal DNS from independent resolvers and absence of old-client traffic,
+then retire the bridge and production workers.dev transport alias together.
+Source backups remain private outside the webroot. After native writes, any
+rollback requires reconciling new D1 state; never restore stale PostgreSQL.
+
+Daily read-only checks are scheduled November 14–20 at 09:15 America/New_York,
+seven runs only, under `beyondremote-post-migration-performance-and-cost-checks`.
+Windows elevation/service-route recovery remains deferred; no app install or
+remote-desktop streaming was moved through Cloudflare in this cutover.
+
 ## Verified preparation
 
 - Live PHP SHA256 remains `0ca083cc4ef8a5db3a82cbd7b2a5f9a61af8d9435f4e6541ad83b814f1c6bb11`;
@@ -56,9 +89,10 @@ monitoring is retained; billable request logs containing OAuth URLs are not enab
 
 ## Cutover gate
 
-Preparation is not live migration. Require active TLS, fresh source/config/DNS
-checks, a brief source write fence, final consistent snapshot/import and exact
-parity, then normal-hostname authorization/identity acceptance. Preserve private
+The cutover gate passed: active TLS, fresh source/config/DNS checks, a brief
+source fence, final snapshot/import parity, and normal-hostname identity and
+private-access acceptance. The server uses Python 3.6; the private cutover helper
+was corrected to use explicit PIPE arguments before the source fence was set. Preserve private
 rollback source/config. After destination writes begin, reconcile them before any
 rollback; restoring stale PostgreSQL or changing DNS back alone loses data.
 
@@ -73,3 +107,19 @@ Flip2Tasty's legacy blog/StellarGallery/StellarVacationEscape surfaces. Preserve
 data and features: directory listings or failing pages are not retirement approval.
 HAB and mail retain their separate monitoring. Do not cancel InMotion while other
 sites or the propagation bridge still depend on it.
+
+## Edge protection and scope
+
+AI-training blocking is enabled for the Beyond Studios zone, with search and
+user-directed agent policies preserved. An API-host-scoped custom rule blocks
+identified unwanted harvesting/backlink crawler identities before the Worker.
+Normal health200/private401 and SEOkicks403 probes passed. The production
+workers.dev transport remains temporarily necessary for the propagation bridge;
+it still requires authentication on every private route and is not protected by
+the custom-domain zone firewall. Retire it with the bridge. Staging is separate.
+
+The shared global AGENTS.md now requires cost-conscious Cloudflare edge crawler
+enforcement on every migrated/new site. HAB's corresponding provider receipt is
+`~/.local/share/hab-turn228/REPORT.md`; its canonical website and bot docs have
+training/crawler enforcement, and public page burst protection is site-specific.
+CommsOpen and other not-yet-migrated sites remain separate release work.

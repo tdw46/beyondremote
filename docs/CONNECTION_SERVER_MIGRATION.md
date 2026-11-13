@@ -736,3 +736,12 @@ Tyler deferred Windows elevation/repair and app QoL until he can approve locally
 independent PHP/PostgreSQL exit. The prepared Windows recovery steps remain in
 [the cutover checklist](PRODUCTION_API_CUTOVER.md#dns-propagation-and-independent-app-recovery).
 No app rebuild, reinstall or Windows security change belongs to this hosting phase.
+
+### Production API cutover accepted — turn227
+
+The canonical API and production database now run on Cloudflare; existing
+sessions, both browser OAuth providers, owner isolation and immediate logout
+revocation passed. See [acceptance and remaining propagation retirement](API_MIGRATION_227.md).
+A temporary old-DNS forwarding bridge remains on InMotion; it does not query or
+write PostgreSQL. Windows app recovery and QoL remain deferred, independent of
+this API cutover. Seven daily performance/cost checks start November14.
