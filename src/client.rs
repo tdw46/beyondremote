@@ -271,7 +271,23 @@ impl Client {
             if route.port == 21128 && pk.len() == sign::PUBLICKEYBYTES {
                 // Private app traffic only. The selected home computer may also expose
                 // this pinned-key channel; no system VPN adapter or internet route changes.
-                let public_address = route.public_address;
+                let api = crate::common::get_api_server(
+                    Config::get_option("api-server"),
+                    Config::get_option("custom-rendezvous-server"),
+                );
+                let cache_key = format!("account-direct-endpoint-{}", peer);
+                let cached = if route.public_address.is_empty() {
+                    crate::account_route_cache::resolve(
+                        &LocalConfig::get_option(&cache_key),
+                        &api,
+                        &route.public_key,
+                    )
+                } else {
+                    None
+                };
+                let recovered = cached.is_some();
+                let (public_address, public_port) =
+                    cached.unwrap_or((route.public_address, route.public_port));
                 for address in route
                     .addresses
                     .iter()
@@ -290,8 +306,8 @@ impl Client {
                     if !local && !public {
                         continue;
                     }
-                    let port = if public && route.public_port >= 1024 {
-                        route.public_port
+                    let port = if public && public_port >= 1024 {
+                        public_port
                     } else {
                         route.port
                     };
@@ -301,6 +317,21 @@ impl Client {
                     {
                         // A reachable wrong host must fail closed, never fall back to plaintext.
                         Self::secure_account_connection(peer, &pk, &mut conn).await?;
+                        if public {
+                            if let Some(value) = crate::account_route_cache::encode_verified(
+                                &api,
+                                &route.public_key,
+                                address,
+                                port,
+                            ) {
+                                if LocalConfig::get_option(&cache_key) != value {
+                                    LocalConfig::set_option(cache_key.clone(), value);
+                                }
+                            }
+                            if recovered {
+                                log::info!("Recovered verified account internet candidate; fresh authorization still required");
+                            }
+                        }
                         log::info!(
                             "Account private connection established directly ({})",
                             if public { "internet" } else { "LAN" }

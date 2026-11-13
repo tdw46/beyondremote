@@ -32,6 +32,16 @@ try {
   $files = @(Get-ChildItem $bundle -File -Recurse | Get-FileHash -Algorithm SHA256)
   if ($files.Count -lt 10) { throw 'Incomplete staging bundle' }
   $files | Export-Csv (Join-Path $root "logs\setup-$stamp-sha256.csv") -NoTypeInformation
+  # A portable copy redirects to the registered system installation. Updating
+  # LOCALAPPDATA in that situation reports success while the old service runs.
+  # Preserve the built manifest for the guarded elevated install-only workflow.
+  $systemDest = Join-Path $env:ProgramFiles 'BeyondRemote Staging'
+  $stagingServices = @(Get-CimInstance Win32_Service -ErrorAction Stop | Where-Object {
+    $_.Name -eq 'BeyondRemote Staging' -or $_.PathName -match '(?i)BeyondRemote Staging[\\/]BeyondRemote Staging\.exe'
+  })
+  if ($stagingServices.Count -or (Test-Path (Join-Path $systemDest 'BeyondRemote Staging.exe'))) {
+    throw "Build ready; system staging installation detected. Use the verified elevated install-only workflow for the registered service path, with manifest logs\setup-$stamp-sha256.csv. No per-user copy was replaced. Local UAC approval is required unless an authorized elevated updater is already registered."
+  }
   $dest = Join-Path $env:LOCALAPPDATA 'Programs\BeyondRemote Staging'
   if (!(Test-Path (Join-Path $dest 'BeyondRemote Staging.exe'))) { throw 'Existing staging installation not found' }
   $owned = @(Get-Process | Where-Object { $_.Path -like ($dest+'\*') })
