@@ -98,6 +98,7 @@ async fn start_hbbs_sync_async() {
     loop {
         tokio::select! {
             _ = interval.tick() => {
+                crate::wake::dispatch_pending();
                 let url = heartbeat_url();
                 let id = Config::get_id();
                 if url.is_empty() {

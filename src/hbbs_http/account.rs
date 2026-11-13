@@ -142,6 +142,8 @@ pub struct AuthResult {
 /// Resolve only an owned device, on explicit connect intent. No polling or writes.
 #[derive(Deserialize)]
 pub struct AccountRoute {
+    #[serde(default)]
+    pub public_address: String,
     pub addresses: Vec<String>,
     pub port: u16,
     pub public_key: String,

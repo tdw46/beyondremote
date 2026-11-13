@@ -7,11 +7,12 @@ use std::{
 };
 
 const SERVICE: &str = "urn:schemas-upnp-org:service:WANIPConnection:1";
-const PORTS: [(&str, u16); 4] = [
+const PORTS: [(&str, u16); 5] = [
     ("TCP", 21115),
     ("TCP", 21116),
     ("UDP", 21116),
     ("TCP", 21117),
+    ("TCP", 21128), // pinned-key encrypted account control; never a public UDP wake port
 ];
 
 pub struct Mapping {

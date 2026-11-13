@@ -30,10 +30,16 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   Map<String, dynamic> _serverStatus = {};
   String _myId = '';
   bool _watchingSetup = false;
+  bool _wakeEnabled = false;
+  String _wakeMessage = '';
+  bool _wakeSetupBusy = false;
+  bool _wakeBusy = false;
+  int _wakeGeneration = 0;
   final _manualHost = TextEditingController();
 
   @override
   void dispose() {
+    _wakeGeneration++;
     _manualHost.dispose();
     super.dispose();
   }
@@ -64,6 +70,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
       });
       if (isDesktop) {
         _myId = await bind.mainGetMyId();
+        await _readWakeSettings();
         await _readServerStatus();
         if (_serverStatus['starting'] == true) _watchSetup();
       }
@@ -141,7 +148,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
       ]));
 
   Widget _setupWizard() => ExpansionTile(
-        initiallyExpanded: _serverChoice == _myId,
+        initiallyExpanded: false,
         title: const Text('Server setup on this computer'),
         leading: const Icon(Icons.settings_ethernet_rounded),
         childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -162,7 +169,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
           Text(_serverMessage),
           const SizedBox(height: 12),
           const Text(
-              'Automatic setup uses UPnP with your router’s existing permission. If it is unavailable, use your router’s app or local administration page to enable UPnP or forward TCP 21115–21117 and UDP 21116 to this computer. Approve the server in your operating system’s firewall. A second router or ISP-shared address may require upstream setup.'),
+              'Automatic setup uses UPnP with your router’s existing permission. If it is unavailable, use your router’s app or local administration page to enable UPnP or forward TCP 21115–21117, TCP 21128 and UDP 21116 to this computer. Approve the server in your operating system’s firewall. A second router or ISP-shared address may require upstream setup.'),
           const SizedBox(height: 8),
           const Text(
               'Enter a router password only in the router’s own trusted sign-in page. BeyondRemote does not upload or store it.'),
@@ -217,7 +224,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
             padding: const EdgeInsets.all(20),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Connection server',
+              Text('Home computer',
                   style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
               const Text(
@@ -226,8 +233,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
               if (_servers.isNotEmpty)
                 DropdownButtonFormField<String>(
                   value: _serverChoice,
-                  decoration:
-                      const InputDecoration(labelText: 'Server computer'),
+                  decoration: const InputDecoration(labelText: 'Home computer'),
                   isExpanded: true,
                   items: _servers
                       .map((s) => DropdownMenuItem<String>(
@@ -256,6 +262,82 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
               if (isDesktop) _setupWizard(),
             ])),
       );
+
+  Future<void> _readWakeSettings() async {
+    final value = jsonDecode(await bind.mainGetCommon(key: 'wake-settings'))
+        as Map<String, dynamic>;
+    if (mounted) {
+      setState(() {
+        _wakeEnabled = value['enabled'] == true;
+        _wakeSetupBusy = value['setup']?['busy'] == true;
+        final setupMessage = value['setup']?['message']?.toString() ?? '';
+        _wakeMessage = setupMessage.isNotEmpty
+            ? setupMessage
+            : value['message']?.toString() ?? '';
+        if (_wakeEnabled && value['profiles'] == 0) {
+          _wakeMessage =
+              'No supported local network adapter found. Connect to your home network and try again.';
+        }
+      });
+    }
+  }
+
+  Future<void> _setWakeEnabled(bool enabled) async {
+    setState(() => _wakeBusy = true);
+    try {
+      await bind.mainSetCommon(key: 'wake-enabled', value: enabled ? 'Y' : '');
+      await _readWakeSettings();
+      await gFFI.userModel
+          .refreshServerConfigFromAccount(force: true, refreshModels: false);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _error = 'Could not save wake settings. Please retry.');
+      }
+    } finally {
+      if (mounted) setState(() => _wakeBusy = false);
+    }
+  }
+
+  Future<void> _wakeAndConnect(Peer peer) async {
+    if (_wakeBusy || _connecting != null) return;
+    final generation = ++_wakeGeneration;
+    setState(() {
+      _wakeBusy = true;
+      _error = null;
+    });
+    try {
+      await bind.mainSetCommon(key: 'wake-device', value: peer.id);
+      // Local status only, bounded to this explicit request. No hosted polling.
+      for (var i = 0; i < 36 && mounted && generation == _wakeGeneration; i++) {
+        final status = jsonDecode(await bind.mainGetCommon(key: 'wake-status'))
+            as Map<String, dynamic>;
+        if (status['target'] == peer.id && status['state'] == 'error') {
+          setState(
+              () => _error = status['message']?.toString() ?? 'Wake failed.');
+          return;
+        }
+        if (status['target'] == peer.id && status['state'] == 'sent') {
+          setState(() =>
+              _error = 'Wake signal sent. Waiting briefly before connecting…');
+          await Future<void>.delayed(const Duration(seconds: 8));
+          if (mounted &&
+              generation == _wakeGeneration &&
+              gFFI.userModel.isLogin) {
+            await _connect(peer);
+          }
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      if (mounted && generation == _wakeGeneration) {
+        setState(() => _error = 'Wake timed out. Check your home computer.');
+      }
+    } finally {
+      if (mounted && generation == _wakeGeneration) {
+        setState(() => _wakeBusy = false);
+      }
+    }
+  }
 
   Future<void> _refresh() async {
     if (_refreshing) return;
@@ -336,6 +418,14 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                   const Text('Update BeyondRemote on this device to connect.'),
               ])),
           const SizedBox(width: 12),
+          if (isDesktop && peer.wakeEnabled)
+            IconButton(
+              tooltip: 'Wake and connect',
+              onPressed: _connecting != null || _wakeBusy
+                  ? null
+                  : () => _wakeAndConnect(peer),
+              icon: const Icon(Icons.power_settings_new_rounded),
+            ),
           FilledButton.icon(
             onPressed: _connecting != null || !compatible
                 ? null
@@ -406,8 +496,63 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                       padding: EdgeInsets.symmetric(vertical: 28),
                       child: Text(
                           'No other devices yet. Sign in to the same account on your other computer to add it here.')),
+                if (_wakeBusy)
+                  Row(children: [
+                    const Expanded(child: Text('Waking your computer…')),
+                    TextButton(
+                        onPressed: () {
+                          _wakeGeneration++;
+                          setState(() => _wakeBusy = false);
+                        },
+                        child: const Text('Cancel')),
+                  ]),
                 ...devices.map(_device),
-                _serverPicker(),
+                Card(
+                  child: ExpansionTile(
+                    leading: const Icon(Icons.shield_outlined),
+                    title: const Text('Private network & wake'),
+                    subtitle: const Text(
+                        'Only BeyondRemote traffic. Your internet stays unchanged.'),
+                    children: [
+                      _serverPicker(),
+                      if (isDesktop) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.power_settings_new_rounded),
+                            label: Text(_wakeSetupBusy
+                                ? 'Preparing…'
+                                : 'Prepare this computer for wake'),
+                            onPressed: _wakeSetupBusy
+                                ? null
+                                : () async {
+                                    await bind.mainSetCommon(
+                                        key: 'wake-prepare', value: '');
+                                    for (var i = 0; i < 125 && mounted; i++) {
+                                      await _readWakeSettings();
+                                      if (!_wakeSetupBusy) break;
+                                      await Future<void>.delayed(
+                                          const Duration(seconds: 1));
+                                    }
+                                    if (mounted) await _refresh();
+                                  },
+                          ),
+                        ),
+                        SwitchListTile(
+                          title: const Text(
+                              'Allow my devices to wake this computer'),
+                          subtitle: const Text(
+                              'Requires supported hardware and another awake computer at home.'),
+                          value: _wakeEnabled,
+                          onChanged: _wakeBusy ? null : _setWakeEnabled,
+                        ),
+                        Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(_wakeMessage)),
+                      ],
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                     'Connections choose the best available path automatically.'),

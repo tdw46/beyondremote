@@ -2839,6 +2839,15 @@ pub fn main_get_common(key: String) -> String {
         return ui_interface::is_permanent_password_set().to_string();
     } else if key == "local-permanent-password-set" {
         return ui_interface::is_local_permanent_password_set().to_string();
+    } else if key == "wake-status" || key == "wake-settings" {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        return if key == "wake-status" {
+            crate::wake::job_json()
+        } else {
+            crate::wake::settings_json()
+        };
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        return "{}".to_owned();
     } else if key == "managed-server-status" {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         return crate::managed_server::status_json();
@@ -3001,6 +3010,16 @@ pub fn main_set_common(_key: String, _value: String) {
         crate::hbbs_http::downloader::remove(&_value);
     } else if _key == "cancel-downloader" {
         crate::hbbs_http::downloader::cancel(&_value);
+    } else if _key == "wake-prepare" {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        crate::wake::prepare_settings();
+    } else if _key == "wake-device" || _key == "wake-enabled" {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        if _key == "wake-device" {
+            crate::wake::enqueue(&_value);
+        } else {
+            crate::wake::set_enabled(_value == "Y");
+        }
     } else if _key.starts_with("managed-server-") {
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         crate::managed_server::handle_command(&_key, &_value);

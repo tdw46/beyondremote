@@ -1,4 +1,5 @@
 import {HttpError,fail,body,digest,requireUser,passwordLogin,registerDevice,session,strategy,userPayload,remoteId,paged,stamp} from './core.mjs';
+import {wakeRoute} from './wake.mjs';
 import {connectRoute} from './connect.mjs';
 import {accountServers,selectServer} from './servers.mjs';
 import {dataRoute,presence} from './data.mjs';
@@ -21,6 +22,7 @@ async function handle(request,env){
   const raw=request.headers.get('Authorization')?.match(/^Bearer (.+)$/i)?.[1]||'';if(raw&&raw.length<=512){const hash=await digest(raw.trim());await db.batch([db.prepare("UPDATE br_presence SET state='offline-reported',updated_at=? WHERE token_hash=? AND state<>'offline-reported'").bind(stamp(),hash),db.prepare('DELETE FROM br_sessions WHERE token_hash=?').bind(hash)]);}return json('');
  }
  const u=await requireUser(db,request);
+ if(method==='POST'&&['/api/v1/wake/prepare','/api/v1/wake/consume'].includes(path))return json(await wakeRoute(db,u,path,b));
  if(method==='GET'&&path==='/api/v1/connection-servers')return json({devices:await accountServers(db,u)});
  if(method==='POST'&&path==='/api/v1/connection-servers/select')return json(await selectServer(db,u,b));
  if(method==='POST'&&['/api/v1/connect/grant','/api/v1/connect/authorize','/api/v1/connect/route'].includes(path))return json(await connectRoute(db,u,path,b));

@@ -94,3 +94,16 @@ CREATE TABLE IF NOT EXISTS br_server_preferences (
  updated_at TEXT NOT NULL,
  FOREIGN KEY(user_id,device_id) REFERENCES br_devices(user_id,remote_id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS br_wake_grants (
+ token_hash TEXT PRIMARY KEY,
+ user_id INTEGER NOT NULL REFERENCES br_users(id) ON DELETE CASCADE,
+ source_token_hash TEXT NOT NULL,
+ source_id TEXT NOT NULL,
+ target_id TEXT NOT NULL,
+ helper_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ used_at TEXT
+);
+CREATE INDEX IF NOT EXISTS br_wake_grants_owner_expiry ON br_wake_grants(user_id,expires_at);
+CREATE INDEX IF NOT EXISTS br_wake_grants_expiry ON br_wake_grants(expires_at);

@@ -269,18 +269,32 @@ impl Client {
                 pk.len() == sign::PUBLICKEYBYTES
             );
             if route.port == 21128 && pk.len() == sign::PUBLICKEYBYTES {
-                for address in route.addresses.iter().take(4) {
-                    let Ok(ip) = address.parse::<std::net::Ipv4Addr>() else {
-                        continue;
-                    };
-                    if !ip.is_private() {
+                // Private app traffic only. The selected home computer may also expose
+                // this pinned-key channel; no system VPN adapter or internet route changes.
+                let public_address = route.public_address;
+                for address in route
+                    .addresses
+                    .iter()
+                    .take(4)
+                    .chain((!public_address.is_empty()).then_some(&public_address))
+                {
+                    let local = address
+                        .parse::<std::net::Ipv4Addr>()
+                        .map(|ip| ip.is_private())
+                        .unwrap_or(false);
+                    let public = address == &public_address
+                        && address.len() <= 253
+                        && address
+                            .bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'-');
+                    if !local && !public {
                         continue;
                     }
-                    let endpoint = format!("{}:{}", ip, route.port);
+                    let endpoint = format!("{}:{}", address, route.port);
                     if let Ok(mut conn) = connect_tcp_local(endpoint, None, 600).await {
                         // A reachable wrong host must fail closed, never fall back to plaintext.
                         Self::secure_account_connection(peer, &pk, &mut conn).await?;
-                        log::info!("Account connection established directly on local network");
+                        log::info!("Account private connection established directly");
                         return Ok((
                             (conn, true, Some(pk), None, "TCP"),
                             (0, String::new()),
@@ -795,7 +809,7 @@ impl Client {
         Ok((conn, direct, pk, kcp, typ))
     }
 
-    async fn secure_account_connection(
+    pub(crate) async fn secure_account_connection(
         peer_id: &str,
         pk: &[u8],
         conn: &mut Stream,

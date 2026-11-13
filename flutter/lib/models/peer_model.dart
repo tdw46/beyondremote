@@ -56,6 +56,7 @@ class Peer {
   String rdpUsername;
   bool online = false;
   String connectionProtocol = "";
+  bool wakeEnabled = false;
   String loginName; //login username
   String device_group_name;
   String note;

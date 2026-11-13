@@ -1,4 +1,5 @@
 import {fail,object,parse,remoteId,stamp,paged,platform,tagColor,registerDevice,strategy,token} from './core.mjs';
+import {wakeProfiles} from './wake.mjs';
 const bounded=rows=>{if(rows.length>10000)fail('Account list requires pagination',413);return rows;};
 const list=b=>{if(!Array.isArray(b)||b.length>500||b.some(x=>typeof x!=='string'||x.length>256))fail('Invalid list');return b;};
 const savePeer=(db,uid,p,merge)=>{
@@ -45,7 +46,7 @@ export async function dataRoute(db,u,env,method,path,b){
  }
  if(method==='GET'&&path==='/api/peers'){
   const rows=bounded((await db.prepare('SELECT d.remote_id,d.device_info,p.data,s.state,s.updated_at FROM br_devices d LEFT JOIN br_personal_peers p ON p.user_id=d.user_id AND p.peer_id=d.remote_id LEFT JOIN br_presence s ON s.user_id=d.user_id AND s.remote_id=d.remote_id WHERE d.user_id=? ORDER BY d.last_seen_at DESC LIMIT 10001').bind(u.id).all()).results);
-  return paged(rows.map(r=>{const i=parse(r.device_info),p=parse(r.data),common={local_ips:i.local_ips||[],managed_server_public_host:i.managed_server_public_host||'',managed_server_key:i.managed_server_key||''};return {id:r.remote_id,connection_protocol:i.account_connection==='ticket-v1'?'ticket-v1':'legacy',status:1,user:u.name,user_name:u.display_name||u.name,note:'',...common,presence:{state:r.state||'unknown',reported_at:r.updated_at||null,reachability:'check-on-connect'},info:{username:'',os:i.os||'',device_name:p.alias||i.name||'',...common}};}));
+  return paged(rows.map(r=>{const i=parse(r.device_info),p=parse(r.data),common={local_ips:i.local_ips||[],managed_server_public_host:i.managed_server_public_host||'',managed_server_key:i.managed_server_key||''};return {id:r.remote_id,wake_enabled:wakeProfiles(i).length>0,connection_protocol:i.account_connection==='ticket-v1'?'ticket-v1':'legacy',status:1,user:u.name,user_name:u.display_name||u.name,note:'',...common,presence:{state:r.state||'unknown',reported_at:r.updated_at||null,reachability:'check-on-connect'},info:{username:'',os:i.os||'',device_name:p.alias||i.name||'',...common}};}));
  }
  if(method==='POST'&&/^\/api\/ab\/tags\/[^/]+$/.test(path))return (await db.prepare('SELECT name,color FROM br_personal_tags WHERE user_id=? ORDER BY name LIMIT 10001').bind(u.id).all()).results;
  if((method==='POST'&&/^\/api\/ab\/peer\/add\/[^/]+$/.test(path))||(method==='PUT'&&/^\/api\/ab\/peer\/update\/[^/]+$/.test(path))){await savePeer(db,u.id,object(b),method==='PUT').run();return '';}

@@ -2436,6 +2436,16 @@ impl Connection {
         }
         // After handling CloseReason messages, proceed to process other message types
         if let Some(message::Union::LoginRequest(lr)) = msg.union {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            if lr.avatar.starts_with(crate::wake::PREFIX) {
+                // Wake is a separate purpose: never create a desktop session or capture stream.
+                let reply = match crate::wake::receive(&lr).await {
+                    Ok(()) => crate::wake::SENT,
+                    Err(_) => "Wake request refused",
+                };
+                self.send_login_error(reply).await;
+                return false;
+            }
             self.handle_login_request_without_validation(&lr).await;
             if self.authorized {
                 return true;

@@ -59,6 +59,10 @@ pub struct LoginDeviceInfo {
     pub account_direct_port: u16,
     pub account_public_key: String,
     pub managed_server_running: bool,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub wake_profiles: Vec<crate::wake::Profile>,
+    pub wake_enabled: bool,
+    pub wake_helper: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub managed_server_public_host: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -1359,6 +1363,17 @@ pub fn get_login_device_info() -> LoginDeviceInfo {
             String::new()
         },
         managed_server_running,
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        wake_profiles: crate::wake::profiles(),
+        wake_enabled: crate::common::STAGING_BUILD
+            && Config::get_option("beyondremote-wake-enabled") == "Y",
+        wake_helper: if crate::common::STAGING_BUILD
+            && !cfg!(any(target_os = "android", target_os = "ios"))
+        {
+            "wake-v1".into()
+        } else {
+            String::new()
+        },
         managed_server_public_host: managed_server_info
             .as_ref()
             .map(|(host, _)| host.clone())
