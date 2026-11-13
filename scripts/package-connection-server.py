@@ -56,7 +56,7 @@ def main():
                     if len(matches) != 1:
                         raise RuntimeError('Unexpected server archive layout')
                     (target / name).write_bytes(zip_file.read(matches[0]))
-        license_source = ROOT / 'LICENSE'
+        license_source = ROOT / 'LICENCE'
     else:
         source = Path(os.environ.get('BEYONDREMOTE_SERVER_SOURCE', ROOT / 'target/connection-server-source'))
         if not source.exists():
