@@ -33,6 +33,13 @@ test('native API privacy, compatibility, concurrency and bounded writes',async t
  for(const path of ['/auth/google/callback','/api/oidc/auth-query'])assert.equal((await worker.fetch(new Request('https://api.test'+path),prod)).status,503);
  assert.equal((await worker.fetch(new Request('https://api.test/api/peers',{headers:{Authorization:'Bearer '+one}}),prod)).status,200);
  assert.equal((await worker.fetch(new Request('https://api.test/api/peers'),prod)).status,401);
+ const bridge={...prod,TRANSPORT_ORIGIN:'https://transport.test'};
+ assert.equal((await worker.fetch(new Request('https://transport.test/api/beyondremote/ping'),bridge)).status,200);
+ assert.equal((await worker.fetch(new Request('https://transport.test/api/peers'),bridge)).status,401);
+ assert.equal((await worker.fetch(new Request('https://transport.test/api/peers',{headers:{Authorization:'Bearer '+one}}),bridge)).status,200);
+ assert.equal((await worker.fetch(new Request('https://transport.test/api/login',{method:'POST'}),bridge)).status,503);
+ assert.equal((await worker.fetch(new Request('https://transport.test/api/beyondremote/ping'),{...env,TRANSPORT_ORIGIN:'https://transport.test'})).status,503);
+ for(const origin of ['http://transport.test','https://transport.test.evil.test','https://other.test'])assert.equal((await worker.fetch(new Request(origin+'/api/beyondremote/ping'),bridge)).status,503);
  });
 
  await t.test('wake tickets isolate accounts, purposes, revocation and concurrency',async()=>{

@@ -45,13 +45,15 @@ still serves the PostgreSQL API on InMotion. Do not cancel the host yet.
 
 - Verify both real OAuth providers, password compatibility, owner-only data,
   disabled-account denial, logout, one-use connection/wake grants and role fences.
-- Promote the staging-only native client behavior deliberately into reviewed
-  production packages. `STAGING_BUILD` and the staging application-name checks
-  currently separate native routing/UI from stable legacy behavior. A DNS switch
-  alone does not promote those clients. Test stable-client API compatibility and
-  upgrades before changing the production endpoint.
-- Test Windows↔Mac capture/input, disconnect, local logout with an open session,
-  real sleep/wake with an awake LAN helper, and the deferred physical iPhone flow.
+- The owner separated API hosting migration from app promotion on November 13,
+  turn227. Preserve the stable API contract and existing production client config
+  with `ACCOUNT_SERVER_SELECTION=0`. Do not replace app packages or merge staging
+  device settings into production merely to move the API. Test legacy request
+  envelopes, existing-session continuity and both provider callbacks at cutover.
+- Before a later **app** promotion, test Windows↔Mac capture/input, disconnect,
+  focused shortcuts, local logout with an open session, real sleep/wake with an
+  awake LAN helper, and the deferred physical iPhone flow. These remain app gates,
+  not reasons to retain the PHP/PostgreSQL hosting dependency.
 - Local logout/account changes close native account streams without hosted
   polling. A remote administrator deleting a database session denies subsequent
   API requests and handshakes; it does **not** push a termination into an already
@@ -72,3 +74,28 @@ the destination snapshot and evidence. Keep callback URLs stable throughout.
 
 After accepted migration, add the previously requested once-daily, seven-day
 performance/cost checks; do not start or extend the window while cutover is pending.
+
+## DNS propagation and independent app recovery
+
+The production Worker accepts only its canonical origin and the exact configured
+HTTPS `TRANSPORT_ORIGIN`. The second origin supports the read-only preview and
+temporary `sync-api/cpanel/cloudflare-bridge.php`; it has identical authorization
+and write fences. OAuth callbacks and returned client settings remain canonical.
+The bridge verifies TLS, never follows redirects, bounds request/response sizes
+and timeouts, and never opens PostgreSQL. Back up the exact legacy entrypoint
+privately, set `/home/flip2t5/beyondremote-migration-fence`, install the bridge,
+drain in-flight source requests, then take the final snapshot. Keep the fence
+until destination parity and production routing pass. Old DNS clients then reach
+the same D1 writer through the bridge, avoiding split-brain writes. Record its
+retirement after DNS propagation; do not claim the old host is cancellable while
+other sites or transitional dependencies remain.
+
+Windows recovery is explicitly deferred until Tyler can approve locally. Inspect
+`C:\Users\tyler\Documents\BeyondRemote-Staging-Handoff\install-keyboard-85f94fd23.ps1`
+and its `keyboard-85f94fd23-install.json` receipt before rerunning anything. Verify
+the 96-file package manifest, prior 98-file installation backup, staging service,
+TCP21128 listener and owned router mapping. Preserve stable files, accounts and
+Mica styling. Approve the prepared installer locally if needed; do not blindly
+rebuild or relax UAC/firewall rules. Then verify internet reconnect and physical
+Windows focus/shortcut behavior. Mac Remote/Local shortcuts passed Tyler's
+physical acceptance; Windows post-update reconnection remains unverified.

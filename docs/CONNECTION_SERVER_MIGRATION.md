@@ -727,3 +727,12 @@ other preference. Reopening retained the signed-in account and ready device
 permissions. Private before/after evidence and Windows observed build status are
 under the turn226 evidence directory. No cloud service or permission changes
 were made for this input fix.
+
+
+## Turn 227: hosting migration takes priority
+
+Tyler deferred Windows elevation/repair and app QoL until he can approve locally.
+[API migration evidence and next-site queue](API_MIGRATION_227.md) now track the
+independent PHP/PostgreSQL exit. The prepared Windows recovery steps remain in
+[the cutover checklist](PRODUCTION_API_CUTOVER.md#dns-propagation-and-independent-app-recovery).
+No app rebuild, reinstall or Windows security change belongs to this hosting phase.
