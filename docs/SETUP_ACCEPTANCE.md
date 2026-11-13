@@ -91,3 +91,17 @@ OS permission read-back. Keep those native acceptance gates open.
 
 Apple reference: https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy
 Evidence: `~/.local/share/beyondremote-migration/turn222/`. These checks are local OS calls: zero additional Cloudflare requests.
+
+## Persistent Mac identity (turn 223)
+
+Staging packaging now requires a saved Apple signing identity and refuses an ad-hoc fallback. Configure its SHA-1 fingerprint with `--identity`, `BEYONDREMOTE_SIGNING_IDENTITY`, or the user-local `~/.config/beyond-studios/beyondremote-signing.json` (`staging_identity`). This file contains an identity reference, not the private key; the key stays in Keychain. Keep the same staging bundle ID and signing identity for subsequent updates. Public distribution still needs Developer ID/notarization; the local Apple Development signature is not a notarized public release.
+
+Nested Mach-O helpers and frameworks are signed inside-out, then the application; deep/strict verification and the Apple certificate anchor must pass. Ordinary installs must quit the staging app, preserve a rollback copy, and replace the complete bundle rather than patch a running executable. Never transfer TCC database entries, silently reset permissions, use ad-hoc signing on a missing certificate, or borrow the stable app's bundle ID.
+
+The keyboard check accepts Accessibility's existing listening authority. The redundant Input Monitoring row disappears when access is covered and returns if revoked. Outgoing-only users can still request Input Monitoring without granting incoming device control.
+
+Acceptance requires two differently sealed builds with the same designated requirement, a real grant on the first signed build, a complete-bundle reinstall, and live OS read-back on the second. Matching identity alone is not permission-retention proof.
+
+The first identity listed by Keychain was revoked despite `find-identity -v` accepting it locally. Gatekeeper blocked and trashed that candidate. Packaging now checks the exact certificate with `security verify-cert -p codeSign -R ocsp` before creating output; the revoked-identity negative test passes. The second saved identity passes that check, and its installed 175-file bundle launches normally. No security protection, TCC entry or quarantine policy was changed. Local Developer signing does not pass a public-distribution `spctl` assessment and must not be shipped as a notarized release.
+
+Six permission widget tests, targeted analyzer (only three existing deprecation infos), Python syntax, diff checks and Mac Rust/Flutter release builds pass. Real permission-retention acceptance and the updated Windows install are still pending at this source checkpoint; do not infer them from build/signature success.

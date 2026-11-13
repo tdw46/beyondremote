@@ -109,8 +109,9 @@ class _DesktopHomePageState extends State<DesktopHomePage>
           ),
         DeviceAccessStep(
           title: 'Input Monitoring — keyboard shortcuts',
+          hideWhenGranted: true,
           description:
-              'Enable Input Monitoring so your keyboard and shortcuts can reach the other computer.',
+              'Device control already includes keyboard access. If you only want to control another computer, allow Input Monitoring instead.',
           action: 'Set up Input Monitoring',
           check: () async => bind.mainIsCanInputMonitoring(prompt: false),
           request: () async {

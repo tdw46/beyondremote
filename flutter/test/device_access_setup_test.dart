@@ -4,6 +4,40 @@ import 'package:flutter_hbb/common/widgets/setup_glass_dialog.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets('covered keyboard access disappears and returns on revocation',
+      (tester) async {
+    var covered = true;
+    await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+            body: DeviceAccessSetup(
+      observeWindowFocus: false,
+      steps: [
+        DeviceAccessStep(
+            title: 'Screen',
+            description: 'Screen access',
+            action: 'Allow screen',
+            check: () async => false,
+            request: () async {}),
+        DeviceAccessStep(
+            title: 'Keyboard',
+            description: 'Already covered by device control',
+            action: 'Allow keyboard',
+            hideWhenGranted: true,
+            check: () async => covered,
+            request: () async {}),
+      ],
+    ))));
+    await tester.pumpAndSettle();
+    expect(find.text('Keyboard'), findsNothing);
+    expect(find.text('Done'), findsNothing);
+    covered = false;
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(find.text('Keyboard'), findsOneWidget);
+    await tester.tap(find.text('Keyboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Allow keyboard'), findsOneWidget);
+  });
   testWidgets('denial stays pending; resume advances; revocation is visible',
       (tester) async {
     var screen = false;

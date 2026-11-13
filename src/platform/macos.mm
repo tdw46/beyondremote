@@ -44,6 +44,11 @@ extern "C" bool InputMonitoringAuthStatus(bool prompt) {
     #ifdef NO_InputMonitoringAuthStatus
     return true;
     #else
+    // Accessibility already authorizes posting and listening. Do not require
+    // a second, redundant Input Monitoring grant for the same event access.
+    if (AXIsProcessTrusted()) {
+        return true;
+    }
     if (floor(NSAppKitVersionNumber) >= NSAppKitVersionNumber10_15) {
         IOHIDAccessType theType = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
         NSLog(@"IOHIDCheckAccess = %d, kIOHIDAccessTypeGranted = %d", theType, kIOHIDAccessTypeGranted);

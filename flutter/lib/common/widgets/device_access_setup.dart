@@ -9,6 +9,7 @@ class DeviceAccessStep {
   final String description;
   final String action;
   final bool requiresPrevious;
+  final bool hideWhenGranted;
   final Future<bool> Function() check;
   final Future<void> Function() request;
 
@@ -17,6 +18,7 @@ class DeviceAccessStep {
     required this.description,
     required this.action,
     this.requiresPrevious = false,
+    this.hideWhenGranted = false,
     required this.check,
     required this.request,
   });
@@ -168,6 +170,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
 
   Widget _step(BuildContext context, DeviceAccessStep step, int index) {
     final granted = index < _granted.length && _granted[index];
+    if (granted && step.hideWhenGranted) return const SizedBox.shrink();
     final previousReady = !step.requiresPrevious ||
         (_granted.length >= index && _granted.take(index).every((v) => v));
     final firstMissing = _granted.indexWhere((value) => !value);
