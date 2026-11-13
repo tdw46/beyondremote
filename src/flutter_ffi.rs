@@ -1876,6 +1876,20 @@ pub fn main_clear_group() {
 }
 
 pub fn main_load_group() -> String {
+    // The upstream Group schema drops extension fields during a typed round trip.
+    // Preserve the encrypted cache's validated JSON so account capabilities survive
+    // restart; authorization is still checked by the server on every connection.
+    let path = config::Config::path(format!("{}_group", config::APP_NAME.read().unwrap()));
+    if let Ok(data) = std::fs::read(path) {
+        if let Ok(data) = hbb_common::password_security::symmetric_crypt(&data, false) {
+            let data = hbb_common::compress::decompress(&data);
+            if let Ok(json) = String::from_utf8(data) {
+                if serde_json::from_str::<config::Group>(&json).is_ok() {
+                    return json;
+                }
+            }
+        }
+    }
     serde_json::to_string(&config::Group::load()).unwrap_or_default()
 }
 
