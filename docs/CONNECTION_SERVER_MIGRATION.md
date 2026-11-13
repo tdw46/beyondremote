@@ -523,3 +523,9 @@ rules cause bounded repair and read-back; no router-wide scan is used. The
 existing account refresh runs only after repair/start, not read-only inspection.
 No hosted load test, streaming relay, paid service or periodic traffic was added;
 shared-account billing metrics were not remeasured for this local UI fix.
+
+## Turn 222 — independent permission setup
+
+Mac staging has the independently actionable Input Monitoring step, outgoing-only permission correction, Local Network usage explanation/settings link, and the Windows actual-service readiness check. Five focused widget tests and both Mac release builds pass; 175 installed file hashes verify. User will grant Input Monitoring through the wizard. No hosted polling or paid service was added.
+
+The approved Mac-only Windows SSH firewall rule now uses 192.168.5.97 with its existing Private/TCP2222 limits. Local Windows port test succeeds; Mac SSH remains unavailable. The scoped `scripts/windows/rebuild-staging.ps1` verifies an exact source revision, preserves source edits, backs up staging, refuses active sessions, verifies installed hashes and leaves stable untouched. Native Windows build/install and the real permission/connection retest remain pending.

@@ -79,3 +79,15 @@ Windows installation is pending the explicitly requested repair of its existing
 Mac-only SSH firewall rule; no expanded rule or Input Monitoring grant has been
 applied without the pending confirmation. New ad-hoc builds still require actual
 OS permission read-back. Keep those native acceptance gates open.
+
+## Permission completeness follow-up (turn 222)
+
+- Mac screen capture, Accessibility/device control and Input Monitoring are independently actionable. Outgoing-only clients retain the keyboard step without asking for incoming capture/control. Returning to the app rechecks OS state; denial, cancellation and revocation stay pending.
+- Windows system installation is the only prerequisite for its service step. Readiness now checks the actual service as well as the saved stop option. Just-for-me remains an explicitly limited, no-machine-service installation.
+- Mac builds declare Local Network usage and the network section opens its exact privacy pane. A router timeout is not called a confirmed permission denial; Check again repeats the bounded discovery.
+- Microphone, files/folders and clipboard remain feature-scoped. Do not require Full Disk Access, disable endpoint protection, grant router admin access automatically, or claim a permission is ready just because Settings opened. Wake still requires supported hardware/driver and a physical sleep test; router/firewall setup still requires an outside-network test.
+- Five permission widget tests pass, including independent keyboard setup and dependent Windows service setup. Analyzer has no warnings/errors (three pre-existing deprecation infos). Mac Rust and Flutter release builds pass; all 175 installed staging file hashes and the signature verify. Native UI confirms the Input Monitoring action is enabled before screen capture permission. Tyler chose to grant it himself through the wizard.
+- Approved Windows SSH rule remote address changed to 192.168.5.97 only; TCP 2222, Private profile, local binding and executable remain constrained. Windows-local TCP test succeeds, but Mac SSH still times out. Windows build/install acceptance remains open.
+
+Apple reference: https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy
+Evidence: `~/.local/share/beyondremote-migration/turn222/`. These checks are local OS calls: zero additional Cloudflare requests.

@@ -79,38 +79,39 @@ class _DesktopHomePageState extends State<DesktopHomePage>
   }
 
   List<DeviceAccessStep> _deviceAccessSteps() {
-    if (bind.isOutgoingOnly()) return [];
     if (isMacOS) {
       return [
+        if (!bind.isOutgoingOnly())
+          DeviceAccessStep(
+            title: 'Share your screen',
+            description:
+                'Enable BeyondRemote in Screen & System Audio Recording.',
+            action: 'Allow screen sharing',
+            check: () async => bind.mainIsCanScreenRecording(prompt: false),
+            request: () async {
+              bind.mainIsCanScreenRecording(prompt: true);
+              await launchUrl(Uri.parse(
+                  'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'));
+            },
+          ),
+        if (!bind.isOutgoingOnly())
+          DeviceAccessStep(
+            title: 'Allow mouse and keyboard control',
+            description:
+                'Enable BeyondRemote in Accessibility (Device Control and Data Access on newer macOS).',
+            action: 'Allow device control',
+            check: () async => bind.mainIsProcessTrusted(prompt: false),
+            request: () async {
+              bind.mainIsProcessTrusted(prompt: true);
+              await launchUrl(Uri.parse(
+                  'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'));
+            },
+          ),
         DeviceAccessStep(
-          title: 'Share your screen',
-          description:
-              'Enable BeyondRemote in Screen & System Audio Recording.',
-          action: 'Allow screen sharing',
-          check: () async => bind.mainIsCanScreenRecording(prompt: false),
-          request: () async {
-            bind.mainIsCanScreenRecording(prompt: true);
-            await launchUrl(Uri.parse(
-                'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'));
-          },
-        ),
-        DeviceAccessStep(
-          title: 'Allow mouse and keyboard control',
-          description:
-              'Enable BeyondRemote in Accessibility (Device Control and Data Access on newer macOS).',
-          action: 'Allow device control',
-          check: () async => bind.mainIsProcessTrusted(prompt: false),
-          request: () async {
-            bind.mainIsProcessTrusted(prompt: true);
-            await launchUrl(Uri.parse(
-                'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'));
-          },
-        ),
-        DeviceAccessStep(
-          title: 'Send keyboard shortcuts',
+          title: 'Input Monitoring — keyboard shortcuts',
           description:
               'Enable Input Monitoring so your keyboard and shortcuts can reach the other computer.',
-          action: 'Allow keyboard input',
+          action: 'Set up Input Monitoring',
           check: () async => bind.mainIsCanInputMonitoring(prompt: false),
           request: () async {
             bind.mainIsCanInputMonitoring(prompt: true);
@@ -120,6 +121,7 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ),
       ];
     }
+    if (bind.isOutgoingOnly()) return [];
     if (isWindows && !bind.isDisableInstallation()) {
       return [
         DeviceAccessStep(
@@ -141,12 +143,15 @@ class _DesktopHomePageState extends State<DesktopHomePage>
         ),
         DeviceAccessStep(
           title: 'Enable remote access service',
+          requiresPrevious: true,
           description:
               'Keep BeyondRemote available to your signed-in devices. Network policy or security software may still require approval.',
           action: 'Enable service',
           check: () async =>
               (await bind.mainGetCommon(key: 'is-user-install')) == 'true' ||
-              !(await mainGetBoolOption(kOptionStopService)),
+              ((await bind.mainGetCommon(key: 'is-access-service-running')) ==
+                      'true' &&
+                  !(await mainGetBoolOption(kOptionStopService))),
           request: () async {
             await mainSetBoolOption(kOptionStopService, false);
           },

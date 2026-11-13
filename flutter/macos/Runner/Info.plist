@@ -45,6 +45,8 @@
 	<string>MainMenu</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record the sound from microphone for the purpose of the remote desktop.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Connect directly to your computers, discover your router for home-server setup, and send wake signals on your local network.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
     <key>LSUIElement</key>

@@ -8,6 +8,7 @@ class DeviceAccessStep {
   final String title;
   final String description;
   final String action;
+  final bool requiresPrevious;
   final Future<bool> Function() check;
   final Future<void> Function() request;
 
@@ -15,6 +16,7 @@ class DeviceAccessStep {
     required this.title,
     required this.description,
     required this.action,
+    this.requiresPrevious = false,
     required this.check,
     required this.request,
   });
@@ -135,7 +137,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Text(
-                    'Allow your devices to view and control this computer. Expand a step to review its access.'),
+                    'We check the access this computer needs. Choose a step, approve the system prompt, then return here for verification.'),
                 const SizedBox(height: 16),
                 for (var i = 0; i < widget.steps.length; i++)
                   _step(dialogContext, widget.steps[i], i),
@@ -166,8 +168,8 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
 
   Widget _step(BuildContext context, DeviceAccessStep step, int index) {
     final granted = index < _granted.length && _granted[index];
-    final previousReady =
-        _granted.length >= index && _granted.take(index).every((v) => v);
+    final previousReady = !step.requiresPrevious ||
+        (_granted.length >= index && _granted.take(index).every((v) => v));
     final firstMissing = _granted.indexWhere((value) => !value);
     return SetupSection(
       title: step.title,
@@ -206,7 +208,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
             Text(_ready ? 'Device access is set up' : 'Device access needed'),
         subtitle: Text(_ready
             ? 'Local setup checks passed. Verify a connection from your other device.'
-            : 'Finish setup so your other devices can view and control this computer.'),
+            : 'Finish setup for screen sharing, remote control and keyboard shortcuts.'),
         trailing: TextButton(
           onPressed: _open,
           child: Text(_ready ? 'Review' : 'Finish setup'),

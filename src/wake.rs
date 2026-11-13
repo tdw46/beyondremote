@@ -535,6 +535,9 @@ pub fn open_settings(target: &str) {
             "energy" => "x-apple.systempreferences:com.apple.preference.energysaver",
             "firewall" => "x-apple.systempreferences:com.apple.preference.security?Firewall",
             "network" => "x-apple.systempreferences:com.apple.preference.network",
+            "local-network" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork"
+            }
             _ => return,
         };
         if let Err(e) = std::process::Command::new("/usr/bin/open")

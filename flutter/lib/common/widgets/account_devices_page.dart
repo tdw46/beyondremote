@@ -302,7 +302,16 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                           await _readServerStatus();
                         },
                   child: const Text('Open router')),
+              if (isMacOS)
+                OutlinedButton(
+                    onPressed: () => _openSystemSettings('local-network'),
+                    child: const Text('Local Network access')),
             ]),
+            if (isMacOS)
+              const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                      'If macOS asks, allow Local Network access for BeyondRemote. If discovery fails, check that access here, then choose Check again. Router discovery alone cannot confirm internet access.')),
           ]),
           color: mapped ? Colors.greenAccent : Colors.amber),
       _section(

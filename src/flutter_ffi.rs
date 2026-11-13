@@ -2825,6 +2825,11 @@ pub fn main_get_common(key: String) -> String {
         return crate::platform::windows::user_install_path();
         #[cfg(not(target_os = "windows"))]
         return String::new();
+    } else if key == "is-access-service-running" {
+        #[cfg(target_os = "windows")]
+        return crate::platform::windows::is_self_service_running().to_string();
+        #[cfg(not(target_os = "windows"))]
+        return "false".to_owned();
     } else if key == "is-user-install" {
         #[cfg(target_os = "windows")]
         return crate::platform::windows::is_user_install().to_string();
