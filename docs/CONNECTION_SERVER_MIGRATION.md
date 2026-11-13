@@ -193,6 +193,48 @@ wake table in place rather than deleting account records. Disable wake through
 its per-device switch to revoke further requests. Do not remove current server
 keys, account data or router mappings owned by another service.
 
+## Turn 217: real phone-hotspot test
+
+On 2026-11-12, the Mac joined Tyler's iPhone hotspot while Windows remained on
+home Wi-Fi. The default gateway changed from the home router to the phone, the
+public IPv4 differed, and the Windows LAN SSH endpoint became unreachable. The
+staging health API and authenticated account route both responded successfully
+over cellular. This was a real separated-network test, not a LAN rehearsal.
+
+**Result: internet connection failed.** After a fresh client launch, the native
+session validated the account route and pinned key but could not reach either
+Windows private address. Its fallback attempted the old home public endpoint on
+TCP 21116 and timed out. The Mac was still the selected home server, but had left
+that router. No replacement helper was selected or silently installed. This does
+not establish that the opposite topology (Mac server remaining home, Windows on
+cellular) fails; that topology remains untested.
+
+Two additional recovery issues were exposed:
+
+- Closing a remote window and connecting again can fail in the main UI before a
+  new native session starts; restarting the staging app allowed a fresh attempt.
+  The window lifecycle/error reporting needs correction.
+- Returning home assigned the Mac a different DHCP address. The app refused its
+  own stale mappings because their internal client still had the old address.
+  All five entries were independently verified against the exact staging owner,
+  old internal address and port, then removed. **Retry automatic setup** recreated
+  all five for the new address; each was read back and both bundled server
+  processes were running. A permanent network-change reconciliation fix is still
+  required. Never overwrite mappings owned by another service.
+
+Home Wi-Fi was restored. Windows' remote-desktop listener remained reachable,
+but its strict SSH runner no longer accepted the Mac's new source address; its
+firewall/SSH restrictions were not broadened. The paired runner needs a verified
+source-address update or restoration of its previous reserved address before
+further SSH work. No host keys or credentials changed.
+
+Next implementation: invalidate stale network/public-route claims on interface
+changes, reconcile this device's owned mappings safely, recover closed remote
+windows, and offer a clear home-server handoff when the chosen server leaves its
+network. Re-test both network directions and keep actual sleep/wake separately
+gated. No hosted relay, paid service or load test was enabled. Private recovery
+evidence is in `~/.local/share/beyondremote-migration/turn217/`.
+
 ## Shared tracker gate
 
 The BeyondStore tracker checkout's four shared refs were fetched. A fresh
