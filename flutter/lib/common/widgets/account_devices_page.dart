@@ -34,6 +34,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   String _wakeMessage = '';
   bool _wakeSetupBusy = false;
   bool _wakeBusy = false;
+  bool _savingWake = false;
   int _wakeGeneration = 0;
   final _manualHost = TextEditingController();
 
@@ -283,7 +284,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   }
 
   Future<void> _setWakeEnabled(bool enabled) async {
-    setState(() => _wakeBusy = true);
+    setState(() => _savingWake = true);
     try {
       await bind.mainSetCommon(key: 'wake-enabled', value: enabled ? 'Y' : '');
       await _readWakeSettings();
@@ -294,7 +295,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
         setState(() => _error = 'Could not save wake settings. Please retry.');
       }
     } finally {
-      if (mounted) setState(() => _wakeBusy = false);
+      if (mounted) setState(() => _savingWake = false);
     }
   }
 
@@ -504,7 +505,7 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                           _wakeGeneration++;
                           setState(() => _wakeBusy = false);
                         },
-                        child: const Text('Cancel')),
+                        child: const Text('Stop waiting')),
                   ]),
                 ...devices.map(_device),
                 Card(
@@ -544,7 +545,9 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                           subtitle: const Text(
                               'Requires supported hardware and another awake computer at home.'),
                           value: _wakeEnabled,
-                          onChanged: _wakeBusy ? null : _setWakeEnabled,
+                          onChanged: _savingWake || _wakeSetupBusy
+                              ? null
+                              : _setWakeEnabled,
                         ),
                         Padding(
                             padding: const EdgeInsets.all(16),

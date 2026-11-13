@@ -25,6 +25,7 @@ pub struct Profile {
 
 lazy_static::lazy_static! {
     static ref JOB: Mutex<Value> = Mutex::new(json!({"state":"idle"}));
+    static ref RECEIVED: Mutex<std::collections::VecDeque<std::time::Instant>> = Default::default();
     static ref PENDING: Mutex<Option<(String,String)>> = Mutex::new(None);
 }
 
@@ -81,17 +82,61 @@ fn physical(iface: &default_net::Interface) -> bool {
     )
 }
 
+#[cfg(target_os = "macos")]
+lazy_static::lazy_static! {
+    static ref MAC_CACHE: Mutex<std::collections::HashMap<String,String>> = Default::default();
+}
+fn hardware_mac(iface: &default_net::Interface) -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        // default-net 0.14 misreads modern Darwin sockaddr_dl offsets. Read the
+        // OS adapter address, once per interface/address set, never every presence tick.
+        let key = format!("{}:{:?}", iface.name, iface.ipv4);
+        if let Some(mac) = MAC_CACHE.lock().unwrap().get(&key).cloned() {
+            return Some(mac);
+        }
+        if !iface.name.bytes().all(|c| c.is_ascii_alphanumeric()) {
+            return None;
+        }
+        let output = std::process::Command::new("/sbin/ifconfig")
+            .arg(&iface.name)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mac = text.lines().find_map(|line| {
+            let mut fields = line.split_whitespace();
+            (fields.next() == Some("ether"))
+                .then(|| fields.next().map(str::to_owned))
+                .flatten()
+        })?;
+        if mac_bytes(&mac).is_err() {
+            return None;
+        }
+        let mut cache = MAC_CACHE.lock().unwrap();
+        if cache.len() >= 16 {
+            cache.clear();
+        }
+        cache.insert(key, mac.clone());
+        return Some(mac);
+    }
+    #[cfg(not(target_os = "macos"))]
+    iface.mac_addr.as_ref().map(|m| m.to_string())
+}
+
 pub fn profiles() -> Vec<Profile> {
     if !crate::common::STAGING_BUILD || Config::get_option("beyondremote-wake-enabled") != "Y" {
         return vec![];
     }
     let mut out = Vec::new();
     for iface in default_net::get_interfaces() {
-        // Only the physical interface with a gateway; exclude VPN/loopback/virtual links.
-        if !physical(&iface) {
+        // Physical adapters only; exclude VPN/loopback/virtual links.
+        if !physical(&iface) || !iface.ipv4.iter().any(|n| n.addr.is_private()) {
             continue;
         }
-        let Some(mac) = iface.mac_addr.map(|m| m.to_string()) else {
+        let Some(mac) = hardware_mac(&iface) else {
             continue;
         };
         if mac_bytes(&mac).is_err() {
@@ -188,6 +233,22 @@ pub async fn receive(lr: &LoginRequest) -> ResultType<()> {
     let grant = lr.avatar.strip_prefix(PREFIX).unwrap_or_default();
     if grant.len() != 64 || !grant.bytes().all(|b| b.is_ascii_hexdigit()) {
         bail!("Invalid wake request");
+    }
+    // Bound unauthenticated attempts before they can spend hosted operations.
+    {
+        let now = std::time::Instant::now();
+        let mut received = RECEIVED.lock().unwrap();
+        while received
+            .front()
+            .map(|t| now.duration_since(*t) >= Duration::from_secs(60))
+            .unwrap_or(false)
+        {
+            received.pop_front();
+        }
+        if received.len() >= 6 {
+            bail!("Too many wake attempts");
+        }
+        received.push_back(now);
     }
     let access = Config::get_option("beyondremote-account-access-token");
     let v=api("consume",json!({"grant":grant,"source_id":lr.my_id,"target_id":lr.username,"helper_id":Config::get_id()}),&access).await?;
@@ -377,6 +438,8 @@ pub fn prepare_settings() {
 }
 
 pub fn settings_json() -> String {
+    #[cfg(target_os = "macos")]
+    MAC_CACHE.lock().unwrap().clear();
     json!({"setup":SETUP.lock().unwrap().clone(),"enabled":Config::get_option("beyondremote-wake-enabled")=="Y",
         "profiles":profiles().len(),
         "message":"Enable Wake for network access in macOS, or Wake on Magic Packet in your Windows network adapter and firmware. Keep another home computer awake. Hardware support varies; verify with a sleep-and-wake test."}).to_string()
@@ -394,6 +457,17 @@ pub fn set_enabled(enabled: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "explicit physical adapter check on the development Mac"]
+    fn mac_adapter_uses_valid_os_address() {
+        let found = default_net::get_interfaces()
+            .into_iter()
+            .filter(|i| physical(i) && i.ipv4.iter().any(|n| n.addr.is_private()))
+            .filter_map(|i| hardware_mac(&i))
+            .collect::<Vec<_>>();
+        assert!(!found.is_empty());
+        assert!(found.iter().all(|m| mac_bytes(m).is_ok()));
+    }
     #[test]
     fn only_fixed_unicast_magic_packets() {
         let p = packet("02:12:34:56:78:9a").unwrap();
