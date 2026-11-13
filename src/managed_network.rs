@@ -55,6 +55,13 @@ fn xml_value(xml: &str, name: &str) -> ResultType<Option<String>> {
         .map(str::to_owned))
 }
 
+fn mapping_enabled(xml: &str) -> ResultType<bool> {
+    Ok(matches!(
+        xml_value(xml, "NewEnabled")?.as_deref(),
+        Some("1" | "true")
+    ))
+}
+
 fn bounded_text(mut response: reqwest::blocking::Response) -> ResultType<String> {
     let mut bytes = Vec::new();
     response.by_ref().take(65537).read_to_end(&mut bytes)?;
@@ -164,7 +171,18 @@ impl Mapping {
             }
             socket.set_read_timeout(Some(remaining))?;
             let mut data = [0u8; 4096];
-            let (n, peer) = socket.recv_from(&mut data)?;
+            let (n, peer) = match socket.recv_from(&mut data) {
+                Ok(reply) => reply,
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    break
+                }
+                Err(e) => return Err(e.into()),
+            };
             let SocketAddr::V4(peer) = peer else {
                 continue;
             };
@@ -252,6 +270,23 @@ impl Mapping {
         Ok((mapping, port))
     }
 
+    /// Explicit recheck: repair missing owned rules without restarting playback.
+    pub fn recheck(&mut self) -> ResultType<()> {
+        let (_, local) = network_identity()?;
+        if local != self.local {
+            bail!("The network changed. Restart server setup on the current network.");
+        }
+        let xml = self.soap("GetExternalIPAddress", "")?;
+        let address = xml_value(&xml, "NewExternalIPAddress")?.unwrap_or_default();
+        if address != self.public_ip.to_string() {
+            bail!("The router internet address changed. Restart server setup to publish the new route.");
+        }
+        for (protocol, port) in PORTS {
+            self.add(protocol, port, port)?;
+        }
+        Ok(())
+    }
+
     fn soap(&self, action: &str, args: &str) -> ResultType<String> {
         let body = format!("<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"><s:Body><u:{action} xmlns:u=\"{SERVICE}\">{args}</u:{action}></s:Body></s:Envelope>");
         bounded_text(
@@ -278,8 +313,10 @@ impl Mapping {
     fn add(&mut self, protocol: &'static str, port: u16, internal: u16) -> ResultType<()> {
         let identity = Self::identity_args(protocol, port);
         let current = self.soap("GetSpecificPortMappingEntry", &identity)?;
-        if self.owned(&current, internal)? {
-            self.ports.push((protocol, port, internal));
+        if self.owned(&current, internal)? && mapping_enabled(&current)? {
+            if !self.ports.contains(&(protocol, port, internal)) {
+                self.ports.push((protocol, port, internal));
+            }
             return Ok(());
         }
         // A DHCP address change may leave our exact named mapping behind.
@@ -306,16 +343,19 @@ impl Mapping {
         if xml_value(&result, "errorCode")?.is_some() {
             bail!("Router refused automatic port setup");
         }
-        self.ports.push((protocol, port, internal));
-        if !self.owned(
-            &self.soap("GetSpecificPortMappingEntry", &identity)?,
-            internal,
-        )? {
+        if !self.ports.contains(&(protocol, port, internal)) {
+            self.ports.push((protocol, port, internal));
+        }
+        let confirmed = self.soap("GetSpecificPortMappingEntry", &identity)?;
+        if !self.owned(&confirmed, internal)? || !mapping_enabled(&confirmed)? {
             bail!("Router port setup could not be verified");
         }
         Ok(())
     }
     pub fn remove(&mut self) {
+        if self.ports.is_empty() {
+            return;
+        }
         // Do not send cleanup to a different router after roaming. The old rule
         // still has account authentication; it is reconciled when we return.
         if network_identity().map(|(_, ip)| ip).ok() != Some(self.local) {
@@ -350,6 +390,27 @@ impl Mapping {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn disabled_owned_mapping_can_be_cleaned_but_is_not_ready() {
+        let mapping = Mapping {
+            client: reqwest::blocking::Client::new(),
+            url: url::Url::parse("http://192.168.4.1/control").unwrap(),
+            local: "192.168.5.97".parse().unwrap(),
+            owner: "BeyondRemote-test".to_owned(),
+            ports: Vec::new(),
+            public_ip: "47.203.39.150".parse().unwrap(),
+        };
+        let xml = "<entry><NewInternalClient>192.168.5.97</NewInternalClient><NewInternalPort>21116</NewInternalPort><NewPortMappingDescription>BeyondRemote-test</NewPortMappingDescription><NewEnabled>0</NewEnabled></entry>";
+        assert!(mapping.owned(xml, 21116).unwrap());
+        assert!(!mapping_enabled(xml).unwrap());
+        assert!(mapping_enabled(&xml.replace(">0<", ">1<")).unwrap());
+        assert!(mapping_enabled(&xml.replace(">0<", ">true<")).unwrap());
+        assert!(!mapping
+            .owned(&xml.replace("BeyondRemote-test", "Another-app"), 21116)
+            .unwrap());
+        assert!(!mapping.owned(xml, 21117).unwrap());
+    }
+
     #[test]
     fn direct_ports_are_stable_and_separate_from_server_ports() {
         for id in ["236321073", "435194431", "405176576"] {

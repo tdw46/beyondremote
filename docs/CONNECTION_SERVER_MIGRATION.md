@@ -479,3 +479,47 @@ record. Source and shared BeyondStore tracker restrictions from turn 219 remain.
 - These are local UI/OS operations: zero additional Cloudflare requests per dialog
   open, no new hosted polling, no streamed media through Cloudflare and no paid
   service. Actual shared-account billing metrics were not remeasured for this fix.
+
+## Turn 221 compact setup and real router recheck — 2026-11-13
+
+- Generated `docs/design/desktop-setup-reference.png`, then implemented a shared
+  accordion for permissions/server/wake setup. The final Mac overview fits the
+  800 × 600 window; detected-ready sections begin collapsed, details remain
+  scrollable, and Done stays visible. Dark glass, high-contrast fallback,
+  keyboard disclosure and reduced-motion behavior are retained.
+- Fixed Retry returning immediately when the managed server was already running.
+  It now verifies/repairs only its owned fixed router mappings without restarting
+  playback. Disabled mappings are not accepted as ready; ownership checks still
+  permit safe cleanup and reject foreign rules. Timeouts report the unavailable
+  router capability rather than a raw socket error. Repeated checks deduplicate
+  cleanup entries.
+- Opening the wizard runs local address/router/firewall inspection once, displays
+  immediately and does not force an account refresh. It detected this Mac's
+  current local address and router, and correctly reported the pre-existing
+  disabled macOS firewall without changing it or requesting pointless elevation.
+- Installed Mac staging: 175 files match the final packaged artifact, signature
+  verification passed, stable app unchanged. Native Check again completed twice;
+  hbbr/hbbs PIDs 81723/81724 remained unchanged across the second check. Final
+  overview screenshot and rollback are under `~/.local/share/beyondremote-migration/turn221/`.
+- Rust release and Flutter release passed; affected Dart analyzer has no issues,
+  3 permission widget tests and 4 router/security unit tests passed. These are
+  local tests, not a new internet/hotspot or physical wake acceptance claim.
+- **Windows update remains pending:** the desktop connection worked, but its
+  trusted SSH firewall rule allows only the Mac's old address. Read-only native
+  inspection confirmed sshd running and the existing Private/TCP2222 rule.
+  Requested permission to update that exact rule to the current Mac address.
+  Also requested staging Input Monitoring because remote modifier keys dropped.
+  Neither pending grant was applied. Windows Mica/source work is preserved; no
+  Windows build/install success is claimed yet.
+- Ad-hoc Mac packaging requires OS access revalidation. The new installed build
+  correctly presents missing screen/control access rather than claiming an old
+  grant still applies. Permission restoration, Windows native installation and
+  acceptance, physical wake/iPhone and production cutover remain open.
+
+Cost: wizard inspection uses local IPC/OS reads, zero new hosted requests.
+An unchanged explicit router recheck uses one external-address SOAP read and
+five mapping reads against the local router, with no router writes. Missing own
+rules cause bounded repair and read-back; no router-wide scan is used. The
+existing account refresh runs only after repair/start, not read-only inspection.
+No hosted load test, streaming relay, paid service or periodic traffic was added;
+shared-account billing metrics were not remeasured for this local UI fix.

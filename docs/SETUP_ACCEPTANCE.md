@@ -62,3 +62,20 @@ Cloudflare traffic. A successful wake setup may publish one changed device
 configuration through the existing account path. No paid service or load test is
 introduced. Evidence and rollback are outside Git in
 `~/.local/share/beyondremote-migration/turn220/`.
+
+## Compact setup follow-up (turn 221)
+
+The generated reference is `design/desktop-setup-reference.png`. The final native
+Mac overview fits a small 800 × 600 window with collapsed status rows. A step
+needing network setup opens automatically; ready sections start collapsed.
+Local address/router/firewall facts populate without manual input. Two explicit
+router rechecks completed, with server PIDs unchanged across the measured check.
+This verifies router configuration, not reachability from a new outside network.
+
+Four local router tests cover route safety, endpoint restriction, stable ports,
+and disabled-owned versus foreign mappings. Three permission widget tests and
+Dart analysis pass. Mac staging is installed and file/signature verified.
+Windows installation is pending the explicitly requested repair of its existing
+Mac-only SSH firewall rule; no expanded rule or Input Monitoring grant has been
+applied without the pending confirmation. New ad-hoc builds still require actual
+OS permission read-back. Keep those native acceptance gates open.

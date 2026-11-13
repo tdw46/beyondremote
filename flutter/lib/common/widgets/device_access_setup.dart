@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'setup_glass_dialog.dart';
+import 'setup_section.dart';
 
 /// OS-local checks only. Completing a prompt is never proof of permission.
 class DeviceAccessStep {
@@ -40,6 +41,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
   bool _requesting = false;
   bool _dialogOpen = false;
   String? _error;
+  int? _expandedStep;
   bool get _ready =>
       _granted.length == widget.steps.length && _granted.every((v) => v);
 
@@ -87,6 +89,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
         values.add(await step.check());
       }
       if (mounted) {
+        if (values.toString() != _granted.toString()) _expandedStep = null;
         _granted = values;
         _error = null;
       }
@@ -132,7 +135,7 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Text(
-                    'Allow your signed-in devices to view and control this computer. Your operating system asks for each permission; you stay in control.'),
+                    'Allow your devices to view and control this computer. Expand a step to review its access.'),
                 const SizedBox(height: 16),
                 for (var i = 0; i < widget.steps.length; i++)
                   _step(dialogContext, widget.steps[i], i),
@@ -165,26 +168,30 @@ class _DeviceAccessSetupState extends State<DeviceAccessSetup>
     final granted = index < _granted.length && _granted[index];
     final previousReady =
         _granted.length >= index && _granted.take(index).every((v) => v);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(granted ? Icons.check_circle : Icons.lock_outline,
-            color: granted ? Theme.of(context).colorScheme.primary : null),
-        const SizedBox(width: 12),
-        Expanded(
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(step.title, style: Theme.of(context).textTheme.titleMedium),
-            Text(step.description),
-            if (!granted)
-              OutlinedButton(
-                onPressed: previousReady && !_requesting && mounted
-                    ? () => _request(step)
-                    : null,
-                child: Text(step.action),
-              ),
-          ]),
-        ),
+    final firstMissing = _granted.indexWhere((value) => !value);
+    return SetupSection(
+      title: step.title,
+      summary: granted
+          ? 'Allowed'
+          : previousReady
+              ? 'Needs your approval'
+              : 'Finish the step above',
+      icon: granted ? Icons.check_circle_outline : Icons.lock_outline,
+      statusColor: granted ? Colors.greenAccent : null,
+      expanded: (_expandedStep ?? firstMissing) == index,
+      onToggle: () {
+        _expandedStep = (_expandedStep ?? firstMissing) == index ? -1 : index;
+        _changed();
+      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(step.description),
+        if (!granted)
+          OutlinedButton(
+            onPressed: previousReady && !_requesting && mounted
+                ? () => _request(step)
+                : null,
+            child: Text(step.action),
+          ),
       ]),
     );
   }

@@ -25,6 +25,9 @@ lazy_static::lazy_static! {
     static ref FIREWALL_SETUP: Mutex<Value> = Mutex::new(serde_json::json!({"busy":false,"verified":false,"message":"Firewall access has not been checked by setup."}));
 }
 
+static INSPECTING: AtomicBool = AtomicBool::new(false);
+lazy_static::lazy_static! { static ref NETWORK_DETAILS: Mutex<Value> = Mutex::new(serde_json::json!({})); }
+
 static SHUTDOWN_HOOK: Once = Once::new();
 static STARTING: AtomicBool = AtomicBool::new(false);
 
@@ -35,12 +38,15 @@ struct ManagedServer {
     last_error: String,
     installing: bool,
     mapping: Option<crate::managed_network::Mapping>,
+    mapping_verified: bool,
 }
 
 #[derive(Serialize)]
 struct ManagedStatus {
     starting: bool,
     router_mapped: bool,
+    inspecting: bool,
+    network: Value,
     firewall_setup: Value,
     supported_install: bool,
     supported_run: bool,
@@ -130,6 +136,7 @@ pub fn stop_on_shutdown() {
     let mut managed = MANAGED.lock().unwrap();
     stop_child(managed.hbbs.take());
     stop_child(managed.hbbr.take());
+    managed.mapping_verified = false;
     let mapping = managed.mapping.take();
     drop(managed);
     if let Some(mut mapping) = mapping {
@@ -151,6 +158,7 @@ pub extern "C" fn stop_on_shutdown_hook() {
 
 pub fn handle_command(key: &str, value: &str) {
     match key {
+        "managed-server-inspect" if crate::common::STAGING_BUILD => inspect_setup(),
         "managed-server-prepare-firewall" if crate::common::STAGING_BUILD => {
             prepare_firewall();
         }
@@ -203,8 +211,7 @@ pub fn handle_command(key: &str, value: &str) {
             Config::set_option("managed-server-paused".to_owned(), String::new());
             Config::set_option("managed-server-manual-network".to_owned(), String::new());
             Config::set_option(OPT_ENABLED.to_owned(), "Y".to_owned());
-            clear_last_error();
-            start_if_enabled();
+            recheck_setup();
         }
         "managed-server-enable" => {
             Config::set_option(
@@ -287,6 +294,111 @@ pub fn handle_command(key: &str, value: &str) {
     }
 }
 
+/// Local facts only; run on explicit wizard opening, not on each status poll.
+fn inspect_setup() {
+    if INSPECTING.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| {
+        *NETWORK_DETAILS.lock().unwrap() = match crate::managed_network::network_identity() {
+            Ok((gateway, local)) => {
+                serde_json::json!({"router":gateway.to_string(),"local_address":local.to_string()})
+            }
+            Err(error) => serde_json::json!({"error":error.to_string()}),
+        };
+        if let Some(state) = inspect_firewall() {
+            let mut current = FIREWALL_SETUP.lock().unwrap();
+            if current["busy"] != true {
+                *current = state;
+            }
+        }
+        INSPECTING.store(false, Ordering::SeqCst);
+    });
+}
+
+fn recheck_setup() {
+    if hbb_common::config::LocalConfig::get_option("access_token").is_empty()
+        || Config::get_option("beyondremote-selected-server-id") != Config::get_id()
+        || STARTING.swap(true, Ordering::SeqCst)
+    {
+        return;
+    }
+    inspect_setup();
+    std::thread::spawn(|| {
+        let mut mapping = MANAGED.lock().unwrap().mapping.take();
+        let result = if is_running() {
+            match mapping.as_mut() {
+                Some(mapping) => mapping.recheck(),
+                None => {
+                    crate::managed_network::Mapping::establish(&Config::get_id()).map(|value| {
+                        mapping = Some(value);
+                    })
+                }
+            }
+        } else {
+            start_and_apply_config()
+        };
+        let mut state = MANAGED.lock().unwrap();
+        // Never re-publish after logout, deselection or Stop during discovery.
+        let still_selected = Config::get_option(OPT_ENABLED) == "Y"
+            && Config::get_option("beyondremote-selected-server-id") == Config::get_id()
+            && !hbb_common::config::LocalConfig::get_option("access_token").is_empty();
+        if still_selected {
+            if let Some(mapping) = mapping {
+                Config::set_option(OPT_PUBLIC_HOST.to_owned(), mapping.public_ip.to_string());
+                state.mapping = Some(mapping);
+            }
+            state.mapping_verified = result.is_ok() && state.mapping.is_some();
+            state.last_error = result.err().map(|e| e.to_string()).unwrap_or_default();
+        }
+        drop(state);
+        STARTING.store(false, Ordering::SeqCst);
+    });
+}
+
+fn inspect_firewall() -> Option<Value> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = Command::new("/usr/libexec/ApplicationFirewall/socketfilterfw")
+            .arg("--getglobalstate")
+            .env("LC_ALL", "C")
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        if text.contains("State = 0") {
+            return Some(
+                serde_json::json!({"busy":false,"verified":true,"mode":"off","message":"macOS Firewall is off, so it is not blocking this connection. Setup did not change that setting."}),
+            );
+        }
+        let (hbbs, hbbr) = server_paths();
+        let app = std::env::current_exe().ok()?;
+        let allowed = [&app, &hbbs, &hbbr].iter().all(|path| {
+            Command::new("/usr/libexec/ApplicationFirewall/socketfilterfw")
+                .arg("--getappblocked")
+                .arg(path)
+                .env("LC_ALL", "C")
+                .output()
+                .map(|o| {
+                    o.status.success()
+                        && String::from_utf8_lossy(&o.stdout)
+                            .to_lowercase()
+                            .contains("allow")
+                })
+                .unwrap_or(false)
+        });
+        Some(
+            serde_json::json!({"busy":false,"verified":allowed,"mode":"on","message":if allowed {"macOS allows BeyondRemote and its bundled server."} else {"Allow BeyondRemote and its bundled server in macOS Firewall."}}),
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
 fn prepare_firewall() {
     if hbb_common::config::LocalConfig::get_option("access_token").is_empty() {
         return;
@@ -308,6 +420,11 @@ fn prepare_firewall() {
 }
 
 fn configure_firewall() -> ResultType<String> {
+    if let Some(state) = inspect_firewall() {
+        if state["verified"] == true {
+            return Ok(state["message"].as_str().unwrap_or_default().to_owned());
+        }
+    }
     install_bundled()?;
     let (hbbs, hbbr) = server_paths();
     let app = std::env::current_exe()?;
@@ -407,7 +524,9 @@ fn status() -> ManagedStatus {
 
     ManagedStatus {
         starting: STARTING.load(Ordering::SeqCst),
-        router_mapped: MANAGED.lock().unwrap().mapping.is_some(),
+        router_mapped: MANAGED.lock().unwrap().mapping_verified,
+        inspecting: INSPECTING.load(Ordering::SeqCst),
+        network: NETWORK_DETAILS.lock().unwrap().clone(),
         firewall_setup: FIREWALL_SETUP.lock().unwrap().clone(),
         supported_install: is_install_supported(),
         supported_run: is_run_supported(),
@@ -507,6 +626,7 @@ fn start() -> ResultType<()> {
     if let Some(mapping) = mapping {
         Config::set_option(OPT_PUBLIC_HOST.to_owned(), mapping.public_ip.to_string());
         managed.mapping = Some(mapping);
+        managed.mapping_verified = true;
     }
     managed.hbbr = Some(spawn_server(&hbbr_path, &work_dir, &["-k", "_"])?);
     drop(managed);

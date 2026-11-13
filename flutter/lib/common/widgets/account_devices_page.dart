@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -5,6 +6,7 @@ import 'package:get/get.dart';
 import '../../common.dart';
 import 'login.dart';
 import 'setup_glass_dialog.dart';
+import 'setup_section.dart';
 import '../../models/peer_model.dart';
 import '../../models/platform_model.dart';
 
@@ -23,6 +25,7 @@ class AccountDevicesPage extends StatefulWidget {
 class _AccountDevicesPageState extends State<AccountDevicesPage> {
   final _setupRevision = ValueNotifier<int>(0);
   bool _setupDialogOpen = false;
+  String? _expandedSetup;
   bool _firewallBusy = false;
   bool _refreshing = false;
   String? _connecting;
@@ -106,7 +109,10 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
             () => _error = 'Server selection was not saved. Please retry.');
       }
     } finally {
-      if (mounted) setState(() => _savingServer = false);
+      if (mounted) {
+        setState(() => _savingServer = false);
+        _setupRevision.value++;
+      }
     }
   }
 
@@ -124,17 +130,18 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
     }
   }
 
-  Future<void> _watchSetup() async {
+  Future<void> _watchSetup({bool publish = true}) async {
     if (_watchingSetup || !isDesktop) return;
     _watchingSetup = true;
     try {
       // Local IPC only, bounded to the active wizard. Never an HTTP heartbeat.
       for (var i = 0; i < 90 && mounted; i++) {
         await _readServerStatus();
-        if (_serverStatus['starting'] != true) break;
+        if (_serverStatus['starting'] != true &&
+            _serverStatus['inspecting'] != true) break;
         await Future<void>.delayed(const Duration(seconds: 1));
       }
-      if (mounted && _serverStatus['running'] == true) {
+      if (publish && mounted && _serverStatus['running'] == true) {
         await gFFI.userModel
             .refreshServerConfigFromAccount(force: true, refreshModels: false);
       }
@@ -143,133 +150,86 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
     }
   }
 
-  Widget _setupStep(String label, bool complete) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [
-        Icon(
-            complete
-                ? Icons.check_circle_outline
-                : Icons.radio_button_unchecked,
-            size: 19,
-            color: complete ? Theme.of(context).colorScheme.primary : null),
-        const SizedBox(width: 8),
-        Expanded(child: Text(label)),
+  void _toggleSetup(String name) {
+    setState(() => _expandedSetup = _expandedSetup == name ? null : name);
+    _setupRevision.value++;
+  }
+
+  Widget _section(
+          String id, String title, String summary, IconData icon, Widget child,
+          {Color? color}) =>
+      SetupSection(
+          title: title,
+          summary: summary,
+          icon: icon,
+          statusColor: color,
+          expanded: _expandedSetup == id,
+          onToggle: () => _toggleSetup(id),
+          child: child);
+
+  Widget _fact(String title, String value) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
+            width: 130,
+            child: Text(title, style: const TextStyle(color: Colors.grey))),
+        Expanded(child: SelectableText(value)),
       ]));
 
-  Widget _setupWizard() => ExpansionTile(
-        initiallyExpanded: true,
-        title: const Text('Server setup on this computer'),
-        leading: const Icon(Icons.settings_ethernet_rounded),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [
-          _setupStep(
-              'Computer selected for your account', _selectedServerId == _myId),
-          _setupStep(
-              'Server software included', _serverStatus['installed'] == true),
-          _setupStep('Router permissions and port mappings checked',
-              _serverStatus['router_mapped'] == true),
-          _setupStep('Local connection server running',
-              _serverStatus['running'] == true),
-          _setupStep(
-              'Internet connection: test from a different network', false),
-          if (_serverStatus['starting'] == true)
-            const LinearProgressIndicator(),
-          const SizedBox(height: 8),
-          Text(_serverMessage),
-          const SizedBox(height: 12),
-          _setupStep('App-specific firewall access checked',
-              _serverStatus['firewall_setup']?['verified'] == true),
-          Text(_serverStatus['firewall_setup']?['message']?.toString() ??
-              'Check firewall access for this computer.'),
-          if (_firewallBusy) const LinearProgressIndicator(),
-          Wrap(spacing: 8, children: [
-            FilledButton.icon(
-              icon: const Icon(Icons.admin_panel_settings_outlined),
-              label: const Text('Allow server through firewall'),
-              onPressed: _firewallBusy ? null : _prepareFirewall,
-            ),
-            TextButton(
-                onPressed: () => _openSystemSettings('firewall'),
-                child: const Text('Open firewall settings')),
-          ]),
-          const SizedBox(height: 12),
-          const Text(
-              'Automatic setup uses UPnP with your router’s existing permission. If it is unavailable, use your router’s app or local administration page to enable UPnP or forward TCP 21115–21117, TCP 21128 and UDP 21116 to this computer. Approve the server in your operating system’s firewall. A second router or ISP-shared address may require upstream setup.'),
-          const SizedBox(height: 8),
-          const Text(
-              'Enter a router password only in the router’s own trusted sign-in page. BeyondRemote does not upload or store it.'),
-          TextButton.icon(
-              onPressed: () async {
-                await bind.mainSetCommon(
-                    key: 'managed-server-open-router', value: '');
-                await _readServerStatus();
-              },
-              icon: const Icon(Icons.router_outlined),
-              label: const Text('Open this network’s router settings')),
-          const Text(
-              'A router login or ISP change cannot be approved by BeyondRemote. If UPnP is unavailable, use the router page; double NAT or carrier-grade NAT may require your ISP or a different home server.'),
-          ExpansionTile(title: const Text('Manual router setup'), children: [
-            TextField(
-                controller: _manualHost,
-                decoration: const InputDecoration(
-                    labelText: 'Public IPv4 address or DNS name',
-                    helperText:
-                        'Use after forwarding the listed ports to this computer.')),
-            TextButton(
-                onPressed: _selectedServerId != _myId ||
-                        _serverStatus['starting'] == true ||
-                        _serverStatus['running'] == true
-                    ? null
-                    : () async {
-                        await bind.mainSetCommon(
-                            key: 'managed-server-manual-start',
-                            value: _manualHost.text.trim());
-                        await _watchSetup();
-                      },
-                child: const Text('Use manual router setup')),
-          ]),
-          const SizedBox(height: 12),
-          Wrap(spacing: 8, children: [
-            TextButton.icon(
-                onPressed: _selectedServerId != _myId ||
-                        _serverStatus['starting'] == true
-                    ? null
-                    : () async {
-                        await bind.mainSetCommon(
-                            key: 'managed-server-refresh', value: '');
-                        await _watchSetup();
-                      },
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Retry automatic setup')),
-            if (_serverStatus['starting'] == true ||
-                _serverStatus['running'] == true)
-              TextButton(
-                  onPressed: () async {
-                    await bind.mainSetCommon(
-                        key: 'managed-server-stop', value: '');
-                    await _readServerStatus();
-                  },
-                  child: const Text('Stop server and remove its mappings')),
-          ]),
-        ],
-      );
+  Future<void> _checkSetup({bool repair = false}) async {
+    try {
+      await bind.mainSetCommon(
+          key: repair ? 'managed-server-refresh' : 'managed-server-inspect',
+          value: '');
+      await _watchSetup(publish: repair);
+    } catch (_) {
+      if (mounted) {
+        setState(() =>
+            _serverMessage = 'Could not finish the local check. Try again.');
+        _setupRevision.value++;
+      }
+    }
+  }
 
-  Widget _serverPicker() => Card(
-        child: Padding(
-            padding: const EdgeInsets.all(20),
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Home computer',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 8),
-              const Text(
-                  'Choose an account computer to help your devices connect. Keep it awake with BeyondRemote open. Direct connections are preferred.'),
-              const SizedBox(height: 12),
-              if (_servers.isNotEmpty)
-                DropdownButtonFormField<String>(
+  Widget _serverPicker() {
+    final ready = _serverStatus['running'] == true;
+    final mapped = _serverStatus['router_mapped'] == true;
+    final checking = _serverStatus['starting'] == true ||
+        _serverStatus['inspecting'] == true;
+    final firewall = _serverStatus['firewall_setup'] as Map? ?? {};
+    final network = _serverStatus['network'] as Map? ?? {};
+    final selected = _selectedServerId == _myId;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const Text('We’ll check your network and guide you through what’s left.',
+          style: TextStyle(fontSize: 15, color: Colors.grey)),
+      const SizedBox(height: 12),
+      Container(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.withOpacity(0.35)),
+              borderRadius: BorderRadius.circular(14)),
+          child: Row(children: [
+            const Icon(Icons.laptop_outlined, size: 24),
+            const SizedBox(width: 14),
+            Expanded(
+                child: Text(isMacOS ? 'This Mac' : 'This computer',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w600))),
+            Text(selected ? 'Selected home server' : 'Choose a home server',
+                style: const TextStyle(color: Colors.grey, fontSize: 14))
+          ])),
+      _section(
+          'computer',
+          'Computer & server',
+          ready ? 'Server software running' : 'Server software ready',
+          ready ? Icons.check_circle_outline : Icons.laptop_outlined,
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            if (_servers.isNotEmpty)
+              DropdownButtonFormField<String>(
                   value: _serverChoice,
-                  decoration: const InputDecoration(labelText: 'Home computer'),
                   isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Home computer'),
                   items: _servers
                       .map((s) => DropdownMenuItem<String>(
                           value: s['id'] as String,
@@ -278,25 +238,173 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
                       .toList(),
                   onChanged: _savingServer
                       ? null
-                      : (id) => setState(() => _serverChoice = id),
-                ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                  onPressed: _savingServer || _serverChoice == null
+                      : (id) {
+                          setState(() => _serverChoice = id);
+                          _setupRevision.value++;
+                        }),
+            const SizedBox(height: 12),
+            Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton(
+                    onPressed: _savingServer || _serverChoice == null
+                        ? null
+                        : _saveServer,
+                    child: Text(_savingServer
+                        ? 'Setting up…'
+                        : _serverChoice == _myId
+                            ? 'Set up this computer'
+                            : 'Use selected computer'))),
+            const SizedBox(height: 8),
+            const Text(
+                'Keep the selected computer awake with BeyondRemote open. Direct connections are preferred.'),
+          ]),
+          color: ready ? Colors.greenAccent : null),
+      _section(
+          'network',
+          'Network access',
+          checking
+              ? 'Checking this computer…'
+              : mapped
+                  ? 'Router mappings verified'
+                  : 'Needs attention',
+          Icons.router_outlined,
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            _fact('Local address',
+                network['local_address']?.toString() ?? 'Checking…'),
+            _fact('Router', network['router']?.toString() ?? 'Not detected'),
+            if ((_serverStatus['public_host']?.toString() ?? '').isNotEmpty)
+              _fact(
+                  'Internet address', _serverStatus['public_host'].toString()),
+            Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                    color: Colors.grey.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3))),
+                child: Text(network['error']?.toString() ??
+                    (mapped
+                        ? 'Router rules are verified. Test a connection from another network to confirm internet access.'
+                        : _serverMessage))),
+            if (checking) const LinearProgressIndicator(),
+            Wrap(spacing: 12, runSpacing: 8, children: [
+              FilledButton(
+                  onPressed: checking || !selected
                       ? null
-                      : _saveServer,
-                  icon: const Icon(Icons.dns_outlined),
-                  label: Text(_savingServer
-                      ? 'Setting up…'
-                      : _serverChoice == _myId
-                          ? 'Set up this computer'
-                          : 'Use selected computer')),
-              const SizedBox(height: 8),
-              const Text(
-                  'Changes reach other devices when they refresh or reconnect. A saved selection does not guarantee internet reachability.'),
-              if (isDesktop) _setupWizard(),
-            ])),
-      );
+                      : () => _checkSetup(repair: true),
+                  child: const Text('Check again')),
+              OutlinedButton(
+                  onPressed: network['router'] == null
+                      ? null
+                      : () async {
+                          await bind.mainSetCommon(
+                              key: 'managed-server-open-router', value: '');
+                          await _readServerStatus();
+                        },
+                  child: const Text('Open router')),
+            ]),
+          ]),
+          color: mapped ? Colors.greenAccent : Colors.amber),
+      _section(
+          'firewall',
+          'Firewall',
+          firewall['verified'] == true
+              ? (firewall['mode'] == 'off'
+                  ? 'Not blocking · firewall is off'
+                  : 'App access verified')
+              : 'Check access',
+          Icons.shield_outlined,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(firewall['message']?.toString() ??
+                'Checking system firewall access.'),
+            const SizedBox(height: 12),
+            if (_firewallBusy) const LinearProgressIndicator(),
+            Wrap(spacing: 12, runSpacing: 8, children: [
+              if (firewall['verified'] != true)
+                FilledButton(
+                    onPressed: _firewallBusy ? null : _prepareFirewall,
+                    child: const Text('Allow automatically')),
+              OutlinedButton(
+                  onPressed: () => _openSystemSettings('firewall'),
+                  child: const Text('Open settings')),
+            ]),
+          ]),
+          color: firewall['verified'] == true ? Colors.greenAccent : null),
+      _section('wake', 'Wake this computer', 'Optional',
+          Icons.nights_stay_outlined, _wakeContent()),
+      _section(
+          'advanced',
+          'Advanced details',
+          'Manual setup and recovery',
+          Icons.tune,
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text(
+                'If automatic setup is unavailable, forward TCP 21115–21117, TCP 21128 and UDP 21116 to the detected local address. Double NAT or an ISP-shared address may need upstream setup. Enter router credentials only on your router’s own trusted page.'),
+            const SizedBox(height: 12),
+            TextField(
+                controller: _manualHost,
+                decoration: const InputDecoration(
+                    labelText: 'Public IPv4 address or DNS name')),
+            TextButton(
+                onPressed: !selected || checking || ready
+                    ? null
+                    : () async {
+                        await bind.mainSetCommon(
+                            key: 'managed-server-manual-start',
+                            value: _manualHost.text.trim());
+                        await _watchSetup();
+                      },
+                child: const Text('Use manual setup')),
+            if (ready || checking)
+              TextButton(
+                  onPressed: () async {
+                    await bind.mainSetCommon(
+                        key: 'managed-server-stop', value: '');
+                    await _readServerStatus();
+                  },
+                  child: const Text('Stop server and remove its mappings')),
+          ])),
+    ]);
+  }
+
+  Widget _wakeContent() =>
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text(
+            'Keep another signed-in computer awake on the same home network to send the wake signal.'),
+        const SizedBox(height: 12),
+        FilledButton(
+            onPressed: _wakeSetupBusy ? null : _prepareWake,
+            child: Text(_wakeSetupBusy
+                ? 'Waiting for system approval…'
+                : 'Enable automatically')),
+        if (_wakeSetupBusy) const LinearProgressIndicator(),
+        const SizedBox(height: 12),
+        SelectableText(_wakeMessage),
+        ExpansionTile(title: const Text('Settings & sleep test'), children: [
+          Wrap(spacing: 8, children: [
+            TextButton(
+                onPressed: () => _openSystemSettings('power'),
+                child: const Text('Power settings')),
+            if (isMacOS)
+              TextButton(
+                  onPressed: () => _openSystemSettings('energy'),
+                  child: const Text('Desktop Energy settings')),
+            if (isWindows)
+              TextButton(
+                  onPressed: () => _openSystemSettings('adapters'),
+                  child: const Text('Device Manager')),
+            TextButton(
+                onPressed: () => _openSystemSettings('network'),
+                child: const Text('Network settings')),
+          ]),
+          Text(isMacOS
+              ? 'Enable Wake for network access in Battery Options or desktop Energy settings. AC power only; battery policy stays unchanged.'
+              : 'In Network adapters, check Wake on Magic Packet and Allow this device to wake the computer. Missing controls can mean the driver or hardware does not support it.'),
+          const SizedBox(height: 8),
+          const Text(
+              'Put this computer to sleep, then choose Wake from another signed-in device. Applied settings alone do not prove wake works.'),
+        ]),
+      ]);
 
   Future<void> _openSystemSettings(String target) async {
     await bind.mainSetCommon(key: 'setup-open-settings', value: target);
@@ -358,10 +466,12 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
   Future<void> _showSetupDialog({required bool wake}) async {
     if (_setupDialogOpen) return;
     _setupDialogOpen = true;
+    _expandedSetup =
+        !wake && _serverStatus['router_mapped'] != true ? 'network' : null;
     if (wake) {
-      await _readWakeSettings();
+      unawaited(_readWakeSettings());
     } else {
-      await _readServerStatus();
+      unawaited(_checkSetup());
     }
     if (!mounted) {
       _setupDialogOpen = false;
@@ -374,73 +484,30 @@ class _AccountDevicesPageState extends State<AccountDevicesPage> {
             valueListenable: _setupRevision,
             builder: (_, __, ___) => SetupGlassDialog(
                   maxWidth: 680,
-                  title: Text(wake ? 'Set up wake' : 'Set up your home server'),
+                  title: Row(children: [
+                    Icon(wake ? Icons.nights_stay_outlined : Icons.laptop_mac,
+                        color: const Color(0xff2196ef), size: 32),
+                    const SizedBox(width: 16),
+                    Expanded(
+                        child: Text(
+                            wake
+                                ? 'Wake this computer'
+                                : 'Set up this computer',
+                            style: const TextStyle(
+                                fontSize: 24, fontWeight: FontWeight.w600)))
+                  ]),
                   content: SizedBox(
                       width: 620,
                       child: SingleChildScrollView(
-                        child: wake
-                            ? Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                    const Text(
-                                        '1. Connect power and your home network. Keep another BeyondRemote computer awake on that network to send the wake signal.'),
-                                    const SizedBox(height: 12),
-                                    Text(isMacOS
-                                        ? '2. Enable Wake for network access on AC power. Battery sleep policy stays unchanged.'
-                                        : '2. Enable Wake on Magic Packet on a supported active adapter, then verify Windows has armed it. Adapters are not restarted.'),
-                                    const SizedBox(height: 12),
-                                    FilledButton.icon(
-                                        icon: const Icon(Icons
-                                            .admin_panel_settings_outlined),
-                                        label: Text(_wakeSetupBusy
-                                            ? 'Waiting for system setup…'
-                                            : 'Enable automatically'),
-                                        onPressed: _wakeSetupBusy
-                                            ? null
-                                            : _prepareWake),
-                                    if (_wakeSetupBusy)
-                                      const LinearProgressIndicator(),
-                                    const SizedBox(height: 12),
-                                    SelectableText(_wakeMessage),
-                                    const SizedBox(height: 12),
-                                    Wrap(spacing: 8, children: [
-                                      TextButton(
-                                          onPressed: () =>
-                                              _openSystemSettings('power'),
-                                          child: const Text(
-                                              'Open power settings')),
-                                      if (isMacOS)
-                                        TextButton(
-                                            onPressed: () =>
-                                                _openSystemSettings('energy'),
-                                            child: const Text(
-                                                'Open desktop Energy settings')),
-                                      if (isWindows)
-                                        TextButton(
-                                            onPressed: () =>
-                                                _openSystemSettings('adapters'),
-                                            child: const Text(
-                                                'Open Device Manager')),
-                                      TextButton(
-                                          onPressed: () =>
-                                              _openSystemSettings('network'),
-                                          child: const Text(
-                                              'Open network settings')),
-                                    ]),
-                                    Text(isMacOS
-                                        ? 'In Battery, open Options and check Wake for network access. On a desktop Mac, use Energy. If the setting is absent, macOS does not expose it for that hardware.'
-                                        : 'In Device Manager: Network adapters → your adapter → Properties. Check Wake on Magic Packet under Advanced and Allow this device to wake the computer under Power Management. Missing options are a driver/hardware limitation; check the PC maker’s firmware guidance. BeyondRemote never reboots into firmware automatically.'),
-                                    const SizedBox(height: 12),
-                                    const Text(
-                                        '3. Verify: put this computer to sleep, then choose Wake from another signed-in device. An awake home helper is required. Applied settings alone do not prove wake works, especially over Wi-Fi or after shutdown.'),
-                                  ])
-                            : _serverPicker(),
-                      )),
+                          child: wake ? _wakeContent() : _serverPicker())),
                   actions: [
-                    TextButton(
+                    if (!wake)
+                      const Text(
+                          'Only BeyondRemote traffic uses this connection.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    FilledButton(
                         onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: const Text('Close'))
+                        child: const Text('Done'))
                   ],
                 )));
     _setupDialogOpen = false;

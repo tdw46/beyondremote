@@ -34,12 +34,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Set up this computer'), findsOneWidget);
     expect(prompts, 0);
-    expect(
-        tester
-            .widget<OutlinedButton>(
-                find.widgetWithText(OutlinedButton, 'Allow input'))
-            .onPressed,
-        isNull);
+    expect(find.text('Allow input'), findsNothing);
+    expect(find.text('Input'), findsOneWidget);
     await tester.tap(find.text('Allow screen'));
     await tester.pumpAndSettle();
     expect(prompts, 1);
