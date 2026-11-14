@@ -745,3 +745,5 @@ revocation passed. See [acceptance and remaining propagation retirement](API_MIG
 A temporary old-DNS forwarding bridge remains on InMotion; it does not query or
 write PostgreSQL. Windows app recovery and QoL remain deferred, independent of
 this API cutover. Seven daily performance/cost checks start November14.
+
+**November 13 final hosting status:** The [DNS bridge retirement](API_MIGRATION_227.md) passed. The canonical API no longer depends on InMotion. Windows staging service recovery remains a separate app task.

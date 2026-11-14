@@ -8,11 +8,7 @@ const baseHeaders={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'
 const json=(data,status=200)=>new Response(typeof data==='string'?data:JSON.stringify(data),{status,headers:{'Content-Type':typeof data==='string'?'text/plain; charset=utf-8':'application/json; charset=utf-8'}});
 async function handle(request,env){
  const url=new URL(request.url),path=url.pathname,method=request.method;
- // The exact HTTPS transport origin permits read-only destination checks and
- // the temporary old-DNS bridge. It never changes canonical OAuth callbacks
- // or skips the ordinary session/ownership checks below.
- const transport=env.ENVIRONMENT==='production'&&env.TRANSPORT_ORIGIN?.startsWith('https://')&&url.origin===env.TRANSPORT_ORIGIN;
- if(!['staging','production'].includes(env.ENVIRONMENT)||env.DATABASE_ROLE!==env.ENVIRONMENT||(!transport&&url.origin!==env.BASE_URL)||(env.ENVIRONMENT==='production'&&env.PRODUCTION_ENABLED!=='1'))fail('Service unavailable',503);
+ if(!['staging','production'].includes(env.ENVIRONMENT)||env.DATABASE_ROLE!==env.ENVIRONMENT||url.origin!==env.BASE_URL||(env.ENVIRONMENT==='production'&&env.PRODUCTION_ENABLED!=='1'))fail('Service unavailable',503);
  // A restored destination stays read-only until its exact release is accepted.
  if(env.MIGRATION_READ_ONLY==='1'&&(!['GET','HEAD','OPTIONS'].includes(method)||path.startsWith('/auth/')||path==='/api/oidc/auth-query'))fail('Migration verification in progress',503);
  if(method==='OPTIONS')return new Response(null,{status:204,headers:{'Access-Control-Allow-Methods':'GET,POST,PUT,DELETE,OPTIONS','Access-Control-Allow-Headers':'Content-Type,Authorization'}});

@@ -2,8 +2,8 @@
 
 Status: **production API and database cut over to Cloudflare on November 13,
 2026**. The checklist below records the procedure; current acceptance and the
-pending DNS-bridge retirement are in [the cutover tracker](API_MIGRATION_227.md).
-InMotion retains a temporary database-free forwarding bridge and other sites.
+completed DNS-bridge retirement are in [the cutover tracker](API_MIGRATION_227.md).
+InMotion retains private rollback artifacts and other sites; it no longer forwards API traffic.
 Do not cancel the host yet. A passing rehearsal alone is not release authorization.
 
 ## Destination preparation
@@ -80,18 +80,9 @@ performance/cost checks; do not start or extend the window while cutover is pend
 
 ## DNS propagation and independent app recovery
 
-The production Worker accepts only its canonical origin and the exact configured
-HTTPS `TRANSPORT_ORIGIN`. The second origin supports the read-only preview and
-temporary `sync-api/cpanel/cloudflare-bridge.php`; it has identical authorization
-and write fences. OAuth callbacks and returned client settings remain canonical.
-The bridge verifies TLS, never follows redirects, bounds request/response sizes
-and timeouts, and never opens PostgreSQL. Back up the exact legacy entrypoint
-privately, set `/home/flip2t5/beyondremote-migration-fence`, install the bridge,
-drain in-flight source requests, then take the final snapshot. Keep the fence
-until destination parity and production routing pass. Old DNS clients then reach
-the same D1 writer through the bridge, avoiding split-brain writes. Record its
-retirement after DNS propagation; do not claim the old host is cancellable while
-other sites or transitional dependencies remain.
+Production now accepts only its canonical origin. Both workers.dev and preview aliases are off. Staging remains separate; the explicit production-preview mode retains its write fence and uses the canonical host. Do not deploy read-only mode over live traffic for routine testing.
+
+During propagation the legacy PHP forwarded to the same D1 writer; the forwarding bridge is now retired. The retained PHP backup can restore forwarding only in conjunction with the prior Worker transport and only after specifically assessing the need. Never restore the older PHP database writer or redirect production to the stale database. See the tracker for the exact version, evidence, and remaining sites.
 
 Windows recovery is explicitly deferred until Tyler can approve locally. Inspect
 `C:\Users\tyler\Documents\BeyondRemote-Staging-Handoff\install-keyboard-85f94fd23.ps1`

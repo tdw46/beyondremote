@@ -5,7 +5,19 @@ quality-of-life work. Do not attempt another Windows elevation or app replacemen
 until Tyler is available locally. The recovery handoff is in
 [the cutover checklist](PRODUCTION_API_CUTOVER.md#dns-propagation-and-independent-app-recovery).
 
-## Production acceptance
+## Final status — November 13, 23:11 Eastern
+
+**InMotion forwarding retired.** Production API traffic and account data are served by Cloudflare at `api.beyondstudios.us`. The original PostgreSQL database/configuration and a private, hash-verified copy of the forwarding bridge were retained for recovery. The installed PHP entrypoint now returns HTTP 410 without forwarding credentials or reading a database. No app reinstall, mail change or hosting cancellation was made.
+
+Over seven hours elapsed after the cutover, beyond the combined four-hour delegation and fifteen-minute A-record TTLs. Parent delegation, the Mac, Cloudflare, Google and Quad9 resolved to Cloudflare. We checked the HTTP/HTTPS vhost logs and November archives, then verified current HTTPS log coverage using a distinctive TLS request pinned to the original address. Excluding that probe, all four post-cutover requests were non-API/non-OAuth 404s, three after the TTLs. No legitimate API clients were observed; this is evidence about this site's logs, not a guarantee about every possible cache.
+
+Production Worker `9b52bcba-df7d-48de-9d2f-c6c337b7c1dd` inherited the original D1, canonical URL, rate limiter, provider credentials and client settings. It has no transport-origin exception. Both production aliases are disabled; the former workers.dev endpoint returned 404. The explicit production-preview mode retains its read-only fence on the canonical origin. Isolated staging is unchanged.
+
+Before retirement, the original two accounts matched their snapshot fields; the Mac's existing session and both configured login providers passed. After retirement the same session successfully read its users, peers and address book; anonymous and invalid-token reads returned 401. Both real OAuth flows and logout revocation had already passed at cutover. All 19 isolated tests passed, including mocked provider callbacks, isolation, revocation, and alternate-host denial. No new OAuth grant, paid service, load test or owner logout was needed. Private redacted evidence: `~/.local/share/beyondremote-migration/retirement-20261113/`.
+
+Next: keep the separate November 14–20 monitoring window, continue the remaining site migrations, and leave Windows staging recovery for its own local maintenance window. Do not reactivate the stale PostgreSQL writer.
+
+## Historical production acceptance at cutover
 
 **LIVE on Cloudflare since November 13, 2026, about 21:07 UTC.**
 `api.beyondstudios.us` now uses Worker version
